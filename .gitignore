@@ -1,0 +1,10 @@
+*.exe
+*.dll
+*.log
+*.csv
+*.tmp
+.DS_Store
+build/
+temp/
+*.bak
+*.swp

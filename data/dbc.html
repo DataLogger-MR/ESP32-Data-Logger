@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BMS Logger - DBC Config</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f0f0f0; }
+        .container { max-width: 800px; margin: auto; }
+        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 10px; }
+        .message { margin-left: 10px; border-left: 2px solid #ccc; padding-left: 10px; }
+        .signal { margin-left: 20px; }
+        button { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        input[type=file] { margin: 10px 0; }
+        #status { color: green; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>DBC Configuration</h1>
+    <div class="card">
+        <h2>Upload DBC File</h2>
+        <input type="file" id="dbcFile" accept=".dbc">
+        <button onclick="uploadDBC()">Upload</button>
+        <div id="status"></div>
+    </div>
+    <div class="card" id="signalsCard" style="display:none;">
+        <h2>Select Signals</h2>
+        <div id="signalsTree"></div>
+        <button onclick="saveSelection()">Save Configuration</button>
+    </div>
+</div>
+<script>
+let messages = [];
+
+function uploadDBC() {
+    let file = document.getElementById('dbcFile').files[0];
+    if (!file) return;
+    let formData = new FormData();
+    formData.append('file', file);
+    fetch('/api/dbc/upload', { method: 'POST', body: formData })
+    .then(res => res.text())
+    .then(msg => {
+        document.getElementById('status').innerText = msg;
+        parseDBC();
+    });
+}
+
+function parseDBC() {
+    fetch('/api/dbc/parse')
+    .then(res => res.json())
+    .then(data => {
+        messages = data;
+        renderTree();
+        document.getElementById('signalsCard').style.display = 'block';
+    });
+}
+
+function renderTree() {
+    let html = '';
+    messages.forEach((msg, idx) => {
+        html += `<div class="message">`;
+        html += `<input type="checkbox" id="msg_${idx}" onchange="toggleMsg(${idx})"> <strong>0x${msg.id.toString(16)} ${msg.name}</strong> (${msg.dlc} bytes)<br>`;
+        msg.signals.forEach((sig, sidx) => {
+            html += `<div class="signal">`;
+            html += `<input type="checkbox" class="sig_${idx}" data-msg="${idx}" data-idx="${sidx}" onchange="updateMsgCheck(${idx})"> ${sig.name} [${sig.startBit}|${sig.length}@${sig.intel?'Intel':'Motorola'}] (${sig.scale},${sig.offset}) ${sig.unit}<br>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+    });
+    document.getElementById('signalsTree').innerHTML = html;
+}
+
+function toggleMsg(msgIdx) {
+    let checked = document.getElementById(`msg_${msgIdx}`).checked;
+    document.querySelectorAll(`.sig_${msgIdx}`).forEach(cb => cb.checked = checked);
+}
+
+function updateMsgCheck(msgIdx) {
+    let all = document.querySelectorAll(`.sig_${msgIdx}`);
+    let checked = Array.from(all).every(cb => cb.checked);
+    document.getElementById(`msg_${msgIdx}`).checked = checked;
+}
+
+function saveSelection() {
+    let selected = [];
+    document.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        if (cb.checked && cb.id.startsWith('msg_')) return;
+        if (cb.checked) {
+            let msgIdx = cb.dataset.msg;
+            let sigIdx = cb.dataset.idx;
+            selected.push({
+                id: messages[msgIdx].id,
+                signal: messages[msgIdx].signals[sigIdx].name
+            });
+        }
+    });
+    fetch('/api/dbc/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(selected)
+    })
+    .then(res => res.text())
+    .then(msg => alert('Saved: ' + msg));
+}
+</script>
+</body>
+</html>

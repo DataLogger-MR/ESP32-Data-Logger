@@ -1,0 +1,10 @@
+#ifndef RUNTIME_CONFIG_H
+#define RUNTIME_CONFIG_H
+
+// Runtime configuration variables (can be changed via UI)
+extern int LOG_INTERVAL_MS_RUNTIME;
+extern int MAX_FILE_SIZE_MB_RUNTIME;
+extern bool ROTATE_HOURLY_RUNTIME;
+extern int AUTO_DELETE_DAYS_RUNTIME;
+
+#endif
