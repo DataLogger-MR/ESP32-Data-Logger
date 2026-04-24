@@ -30,6 +30,7 @@
 #include <freertos/semphr.h>
 #include "i2c_sensors.h"
 #include "i2c_task.h"
+#include "speed_sensor.h"
 
 SemaphoreHandle_t dataMutex = NULL;
 extern std::map<uint32_t, std::vector<DBCSignal>> activeSignals;
@@ -222,6 +223,7 @@ void setup() {
 
     initCAN();
     initECUState();
+    initSpeedSensor();
 
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     // Set timezone to IST (UTC+5:30)
@@ -268,6 +270,7 @@ void loop() {
     t2 = micros();
     totalECU += (t2 - t1);
     countECU++;
+    updateSpeed();
 
     // Log data if active
     if (loggingActive && sdReady && now - lastLogTime >= logIntervalMs) {

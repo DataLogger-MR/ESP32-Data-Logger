@@ -1,10 +1,11 @@
 #ifndef PINS_H
 #define PINS_H
 
-// Existing pins...
 #define SENSOR_UART_RX 16   // Choose free GPIO (e.g., 14)
 #define SENSOR_UART_TX 17   // Choose free GPIO (e.g., 15)
 
+
+#define Encoder_PWM 12  // Hall sensor input
 // ================ PIN CONFIG ================
 #define CAN_RX_PIN 4
 #define CAN_TX_PIN 32

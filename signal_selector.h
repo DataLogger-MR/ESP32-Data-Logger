@@ -13,4 +13,10 @@ void clearActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& activeMap);
 // Add to signal_selector.h
 bool loadCANActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& canActiveMap);
 
+// speed_sensor.h - Add these after the existing extern declarations
+
+extern volatile unsigned long lastPulseMicros;
+extern volatile unsigned long currentPeriodMicros;
+extern volatile bool newPulseReady;
+
 #endif

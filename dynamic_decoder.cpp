@@ -139,6 +139,8 @@ String buildDynamicCSVHeader() {
             }
         }
     }
+
+    header += ",Speed_RPM";
     // GPS columns - ONLY 4 PARAMETERS
     header += ",Latitude,Longitude,Altitude_m,Speed_kmh";
     return header;

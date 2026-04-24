@@ -431,8 +431,19 @@ void formatCompleteCSV(char* buffer, size_t bufferSize,
     unsigned long uptime_seconds = (currentTime - gpsStats.uptime_ms) / 1000;
     pos += snprintf(buffer + pos, bufferSize - pos, ",%lu,%.1f,%.3f",
                     uptime_seconds, gpsStats.maxSpeed_kmh, gpsStats.totalDistance_km);
-    
-    // ================ I2C SENSORS DATA SECTION (static mode) ================
+
+
+// ================ SPEED SENSOR SECTION ================
+  // Speed Sensor Data (Hall effect)
+  if (speedData.valid && isValid(speedData.lastUpdate, speedData.timeoutMs, currentTime)) {
+      pos += snprintf(buffer + pos, bufferSize - pos, ",%.1f,%.0f,%.1f,%.1f",
+                      speedData.frequency_hz, speedData.rpm, 
+                      speedData.speed_kmh, speedData.speed_mps);
+  } else {
+      pos += snprintf(buffer + pos, bufferSize - pos, ",,,,");
+  }
+      
+// ================ I2C SENSORS DATA SECTION (static mode) ================
     formatI2CData(buffer + pos, bufferSize - pos, currentTime);
     
     // End of line
@@ -587,6 +598,13 @@ void logDynamicDataToSD() {
                 if (pos < sizeof(rowBuffer)-2) rowBuffer[pos++] = ',';
             }
         }
+    }
+
+        // Speed Sensor
+    if (speedData.valid && isValid(speedData.lastUpdate, speedData.timeoutMs, now)) {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer)-pos, ",%.0f", speedData.rpm);
+    } else {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer)-pos, ",");
     }
 
     // ------------------ GPS DATA ------------------

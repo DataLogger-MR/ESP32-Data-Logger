@@ -38,7 +38,7 @@ HardcodedMCP9600 hardcodedMCP9600s[] = {
     // Format: {mainChannel, secondaryChannel, address, "SignalName", instanceIndex, valid}
     
     // First 8: direct on main channels 0-7
-    {0, -1, 0x60, "TC1", 0, false},
+    //{0, -1, 0x60, "TC1", 0, false},
     {1, -1, 0x60, "TC2", 1, false},
     {2, -1, 0x60, "TC3", 2, false},
     {3, -1, 0x60, "TC4", 3, false},
@@ -47,10 +47,11 @@ HardcodedMCP9600 hardcodedMCP9600s[] = {
     {6, -1, 0x60, "TC7", 6, false},
     {7, -1, 0x60, "TC8", 7, false},
     // Next 4: secondary mux on main channel 0, secondary channels 0-3
-    {0, 0, 0x60, "TC9", 8, false},      // Main Ch0, Sec Ch0
-    {0, 1, 0x60, "TC10", 9, false},     // Main Ch0, Sec Ch1
-    {0, 2, 0x60, "TC11", 10, false},    // Main Ch0, Sec Ch2
-    {0, 3, 0x60, "TC12", 11, false},    // Main Ch0, Sec Ch3
+    {0, 0, 0x60, "TC9", 8, false},
+    {0, 1, 0x60, "TC10", 9, false},
+    {0, 2, 0x60, "TC11", 10, false},
+    {0, 3, 0x60, "TC12", 11, false},
+    {0, 4, 0x60, "TC1", 0, false},
 };
 
 const int HARDCODED_MCP9600_COUNT = sizeof(hardcodedMCP9600s) / sizeof(hardcodedMCP9600s[0]);
@@ -77,67 +78,106 @@ static bool i2cWriteWithTimeout(uint8_t addr, const uint8_t* data, size_t len, i
     return false;
 }
 
-// Select the correct path for a thermocouple
-static bool selectMCP9600Path(const HardcodedMCP9600& tc) {
-    if (tc.secondaryChannel >= 0) {
-        // Use secondary multiplexer
-        if (!hasSecondaryMux) {
-            Serial.printf("  [%s] secondary mux not present\n", tc.name.c_str());
-            return false;
-        }
-        if (!selectMainMuxChannel(tc.mainChannel)) return false;
-        delay(2);
-        if (!selectSecondaryMuxChannel(tc.secondaryChannel)) return false;
-        delay(2);
-    } else {
-        // Direct on main channel
-        if (!selectMainMuxChannel(tc.mainChannel)) return false;
-    }
-    return true;
+// ================ SIMPLIFIED MUX CONTROL FUNCTIONS (Based on working standalone code) ================
+
+// Simple function to select a channel on a specific mux
+static bool selectMuxChannel(uint8_t muxAddr, uint8_t channel) {
+    if (channel > 7) return false;
+    Wire.beginTransmission(muxAddr);
+    Wire.write(1 << channel);
+    return (Wire.endTransmission() == 0);
 }
 
-// Read temperature from MCP9600 on the currently selected path
-static float readMCP9600Temperature() {
-    uint8_t reg = 0x00;
-    if (!i2cWriteWithTimeout(MCP9600_ADDR, &reg, 1, 10)) return NAN;
-    Wire.requestFrom(MCP9600_ADDR, (uint8_t)2);
-    if (Wire.available() < 2) return NAN;
-    uint16_t raw = Wire.read() << 8 | Wire.read();
-    return raw / 16.0;
+// Simple function to disable a specific mux (close all channels)
+static void disableMux(uint8_t muxAddr) {
+    Wire.beginTransmission(muxAddr);
+    Wire.write(0x00);
+    Wire.endTransmission();
 }
 
-// ================ I2C MUX CONTROL FUNCTIONS ================
+// Select main mux channel (and disable secondary mux if needed)
 bool selectMainMuxChannel(uint8_t channel) {
     if (!useMultiplexer || channel > 7) return false;
-    uint8_t cmd = 1 << channel;
-    return i2cWriteWithTimeout(PCA9548A_ADDR_MAIN, &cmd, 1, 10);
+    
+    // First, disable secondary mux if it exists to ensure isolation
+    if (hasSecondaryMux) {
+        disableMux(PCA9548A_ADDR_SECONDARY);
+    }
+    
+    // Select the main channel
+    return selectMuxChannel(PCA9548A_ADDR_MAIN, channel);
 }
 
+// Select secondary mux channel (main mux must already be on channel 0)
 bool selectSecondaryMuxChannel(uint8_t channel) {
     if (!hasSecondaryMux || channel > 7) return false;
-    uint8_t cmd = 1 << channel;
-    return i2cWriteWithTimeout(PCA9548A_ADDR_SECONDARY, &cmd, 1, 10);
+    
+    // Select secondary channel
+    return selectMuxChannel(PCA9548A_ADDR_SECONDARY, channel);
 }
 
+// Select complete I2C path (main + optional secondary)
 bool selectI2CPath(uint8_t mainChannel, int8_t secondaryChannel) {
+    // Select main channel first
     if (!selectMainMuxChannel(mainChannel)) return false;
-    if (secondaryChannel >= 0) {
-        delay(2);
+    
+    // If secondary channel specified, select it
+    if (secondaryChannel >= 0 && hasSecondaryMux) {
+        delayMicroseconds(50);
         if (!selectSecondaryMuxChannel(secondaryChannel)) return false;
     }
     return true;
 }
 
+// Reset I2C path - disable both muxes
 void resetI2CPath() {
     if (useMultiplexer) {
-        // Reset main multiplexer to no channel
-        uint8_t cmd = 0;
-        i2cWriteWithTimeout(PCA9548A_ADDR_MAIN, &cmd, 1, 10);
-        // If secondary mux exists, reset it as well
+        disableMux(PCA9548A_ADDR_MAIN);
         if (hasSecondaryMux) {
-            i2cWriteWithTimeout(PCA9548A_ADDR_SECONDARY, &cmd, 1, 10);
+            disableMux(PCA9548A_ADDR_SECONDARY);
         }
     }
+}
+
+// Check if MCP9600 is present on current path (based on working standalone code)
+static bool isMCP9600Present() {
+    Wire.beginTransmission(MCP9600_ADDR);
+    Wire.write(0x20);  // Read device ID register
+    if (Wire.endTransmission(false) != 0) return false;
+    if (Wire.requestFrom((uint8_t)MCP9600_ADDR, (uint8_t)2) != 2) return false;
+    uint8_t highByte = Wire.read();
+    Wire.read();
+    return (highByte == 0x40);  // MCP9600 device ID
+}
+
+// Read temperature from MCP9600 (based on working standalone code)
+static float readMCP9600Temperature() {
+    Wire.beginTransmission(MCP9600_ADDR);
+    Wire.write(0x00);  // Temperature register
+    if (Wire.endTransmission(false) != 0) return NAN;
+    if (Wire.requestFrom((uint8_t)MCP9600_ADDR, (uint8_t)2) != 2) return NAN;
+    int16_t raw = ((int16_t)Wire.read() << 8) | Wire.read();
+    return raw * 0.0625f;  // Each count = 0.0625°C
+}
+
+// Select the correct path for a thermocouple (simplified)
+static bool selectMCP9600Path(const HardcodedMCP9600& tc) {
+    if (tc.secondaryChannel >= 0) {
+        // For secondary mux: main channel 0, then secondary channel
+        if (!selectMainMuxChannel(tc.mainChannel)) {
+            return false;
+        }
+        delayMicroseconds(50);
+        if (!selectSecondaryMuxChannel(tc.secondaryChannel)) {
+            return false;
+        }
+    } else {
+        // Direct on main channel
+        if (!selectMainMuxChannel(tc.mainChannel)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ================ INITIALIZATION ================
@@ -179,35 +219,31 @@ void initI2CSensors() {
     
     // Check for main multiplexer at 0x70
     if (i2cWriteWithTimeout(0x70, nullptr, 0, 10)) {
-       // Serial.println("  ✅ Main PCA9548A Multiplexer found at 0x70");
+        Serial.println("  ✅ Main PCA9548A Multiplexer found at 0x70");
         useMultiplexer = true;
         sensorData.pca9548a_present = true;
         
         // Now check for secondary multiplexer on main channel 0
-        uint8_t cmd = 1 << 0;
-        if (i2cWriteWithTimeout(0x70, &cmd, 1, 10)) {
+        if (selectMainMuxChannel(0)) {
             delay(10);
             if (i2cWriteWithTimeout(0x74, nullptr, 0, 10)) {
-                //Serial.println("  ✅ Secondary PCA9548A Multiplexer found at 0x74 (on Main Ch0)");
+                Serial.println("  ✅ Secondary PCA9548A Multiplexer found at 0x74 (on Main Ch0)");
                 hasSecondaryMux = true;
                 
-                // Select secondary channel 2 where MCP9600 is located
-                cmd = 1 << 2;
-                if (i2cWriteWithTimeout(0x74, &cmd, 1, 10)) {
+                // Check for MCP9600 on secondary channel 2
+                if (selectSecondaryMuxChannel(2)) {
                     delay(10);
-                    if (i2cWriteWithTimeout(0x60, nullptr, 0, 10)) {
-                       // Serial.println("  ✅ MCP9600 found at 0x60 (Main Ch0, Sec Ch2)");
+                    if (isMCP9600Present()) {
+                        Serial.println("  ✅ MCP9600 found at 0x60 (Main Ch0, Sec Ch2)");
                     } else {
-                     //   Serial.println("  ⚠️ MCP9600 NOT found at expected path");
+                        Serial.println("  ⚠️ MCP9600 NOT found at expected path");
                     }
                 }
             } else {
                 Serial.println("  ℹ️ No secondary multiplexer detected");
             }
         }
-        // Reset to main channel 0
-        cmd = 1 << 0;
-        i2cWriteWithTimeout(0x70, &cmd, 1, 10);
+        resetI2CPath();
         delay(10);
     } else {
         Serial.println("  ❌ No PCA9548A multiplexer detected at 0x70");
@@ -279,7 +315,7 @@ void initI2CSensors() {
             }
             Serial.printf(", Addr 0x%02X: ", address);
 
-            // --- PATH SELECTION DEBUG ---
+            // --- PATH SELECTION ---
             if (!selectMCP9600Path(hardcodedMCP9600s[i])) {
                 Serial.println("❌ PATH FAILED");
                 hardcodedMCP9600s[i].valid = false;
@@ -287,22 +323,33 @@ void initI2CSensors() {
                 continue;
             }
 
-            // --- READ TEMPERATURE TEST ---
-            float temp = readMCP9600Temperature();
-            Serial.printf(" Test read = %.2f°C", temp);
-            if (!isnan(temp) && temp > -50 && temp < 500) {
-                hardcodedMCP9600s[i].valid = true;
-                hardcodedMCP9600s[i].instanceIndex = i;
-                sensorData.mcp9600_present[i] = true;
-                sensorData.thermocouples[i].valid = false;   // will be updated later
-                Serial.println(" ✅ OK");
-                foundCount++;
+            delay(5);  // Small delay for mux to settle
+
+            // Check if MCP9600 is present and read temperature
+            if (isMCP9600Present()) {
+                float temp = readMCP9600Temperature();
+                Serial.printf(" Temp = %.2f°C", temp);
+                if (!isnan(temp) && temp > -50 && temp < 500) {
+                    hardcodedMCP9600s[i].valid = true;
+                    hardcodedMCP9600s[i].instanceIndex = i;
+                    sensorData.mcp9600_present[i] = true;
+                    sensorData.thermocouples[i].valid = false;   // will be updated later
+                    Serial.println(" ✅ OK");
+                    foundCount++;
+                } else {
+                    hardcodedMCP9600s[i].valid = false;
+                    sensorData.mcp9600_present[i] = false;
+                    Serial.println(" ❌ Invalid temp reading");
+                }
             } else {
                 hardcodedMCP9600s[i].valid = false;
                 sensorData.mcp9600_present[i] = false;
                 Serial.println(" ❌ NOT FOUND");
             }
-            delay(10);
+            
+            // Disable mux after each test (important!)
+            resetI2CPath();
+            delay(5);
         }
         Serial.printf("\n  ✅ Found %d of %d MCP9600 devices\n", foundCount, HARDCODED_MCP9600_COUNT);
         resetI2CPath();
@@ -339,7 +386,7 @@ void scanI2CBus() {
                 
                 // Also check for MCP9600 on secondary channel 2
                 if (selectSecondaryMuxChannel(2)) {
-                    if (i2cWriteWithTimeout(0x60, nullptr, 0, 10)) {
+                    if (isMCP9600Present()) {
                         Serial.println("      ✅ MCP9600 found on Sec Ch2 at 0x60");
                     }
                 }
@@ -411,30 +458,26 @@ void updateThermocouples() {
         }
 
         // Select the correct path
-        bool pathOk = selectMCP9600Path(tc);
-        if (!pathOk) {
+        if (!selectMCP9600Path(tc)) {
             sensorData.thermocouples[i].valid = false;
+            resetI2CPath();
             continue;
         }
 
-        // Read temperature (retry 3 times if needed)
-        float temp = NAN;
-        float ambient = NAN;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            temp = readMCP9600Temperature();
-            if (!isnan(temp)) break;
-            delay(2);
-        }
+        delay(5);  // Allow mux to settle
 
+        // Read temperature
+        float temp = readMCP9600Temperature();
+        
         // Read ambient temperature (optional)
+        float ambient = NAN;
         if (!isnan(temp)) {
             Wire.beginTransmission(MCP9600_ADDR);
             Wire.write(0x01);
-            if (Wire.endTransmission() == 0) {
-                Wire.requestFrom(MCP9600_ADDR, (uint8_t)2);
-                if (Wire.available() >= 2) {
-                    uint16_t rawAmbient = Wire.read() << 8 | Wire.read();
-                    ambient = rawAmbient / 16.0;
+            if (Wire.endTransmission(false) == 0) {
+                if (Wire.requestFrom(MCP9600_ADDR, (uint8_t)2) == 2) {
+                    int16_t rawAmbient = ((int16_t)Wire.read() << 8) | Wire.read();
+                    ambient = rawAmbient * 0.0625f;
                 }
             }
         }
@@ -449,10 +492,10 @@ void updateThermocouples() {
             sensorData.thermocouples[i].valid = false;
             sensorData.thermocouples[i].fault = 1;
         }
+        
+        // IMPORTANT: Disable mux after each read (like your standalone code)
+        resetI2CPath();
     }
-    
-    // Reset to a known state after reading all
-    resetI2CPath();
 }
 
 void updateRTC() {
@@ -621,7 +664,6 @@ void updateI2CSensors() {
     sensorData.lastScanTime = now;
     populateI2CValues();
     resetI2CPath();
-    
 }
 
 // ================ CSV FORMATTING ================

@@ -4,7 +4,9 @@
 #include <Arduino.h>
 #include "types.h"
 #include <set> 
-#include <map>          // ADDED for std::map
+#include <map>
+
+#include "speed_sensor.h"   // <-- ADD THIS LINE
 
 // ================ GLOBAL VARIABLES DECLARATIONS ================
 extern bool sdReady;
@@ -89,6 +91,9 @@ extern unsigned long filteredMessageCount;
 extern unsigned long lastFilteredTime;
 // NEW: I2C sensor values map
 extern std::map<String, double> i2cValues;
+
+// Remove this line - it's now included via speed_sensor.h
+// extern struct SpeedData speedData;
 
 // ================ RUNTIME CONFIGURATION VARIABLES ================
 extern int logIntervalMs;

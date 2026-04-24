@@ -124,6 +124,7 @@ void connectMQTT() {
 void sendMQTTData() {
     unsigned long start = micros();
     unsigned long now = millis();
+    updateSpeed(); 
 
     if (now - lastMQTTSend < MQTT_INTERVAL) return;
 
@@ -188,6 +189,18 @@ void sendMQTTData() {
               addField(true, gpsData.speed_kmh, "G-spd");
           }
       }
+       
+       // ========== ADD SPEED SENSOR HERE ==========
+        // Check if speed data is recent (within last 500ms)
+    bool speedRecent = (speedData.valid && (now - speedData.lastUpdate) <= 500);
+    
+    if (speedRecent) {
+        if (dataAdded) payload += ",";
+        else { payload += " "; dataAdded = true; }
+        payload += "speed_rpm=" + String(speedData.rpm, 0);
+    }
+        // ===========================================
+        
     } else {
         // Static mode – use per‑structure timeouts (already handled by isValid)
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.voltage, "voltage");

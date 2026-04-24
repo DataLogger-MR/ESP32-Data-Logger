@@ -1,6 +1,7 @@
 #include "globals.h"
 #include "types.h"
 #include <set>   
+#include "speed_sensor.h"
 
 // ================ GLOBAL VARIABLES DEFINITIONS ================
 bool loggingActive = true;
@@ -16,6 +17,11 @@ unsigned long lastUARTActivity = 0;  // GPS uses this
 bool dataActive = false;
 unsigned long lastFilteredTime = 0;
 unsigned long filteredMessageCount = 0;
+
+// FIXED: Correct initialization order matching SpeedData structure
+// Structure order: rpm, frequency_hz, speed_kmh, speed_mps, raw_frequency, lastUpdate, valid, timeoutMs
+SpeedData speedData = {0, 0, 0, 0, 0, 0, false, 1000};
+
 // NEW: I2C values map
 std::map<String, double> i2cValues;
 

@@ -12,8 +12,8 @@ extern String wifiStatus;
 extern String wifiIP;
 
 // ================ Wi‑Fi station credentials ================
-#define WIFI_STA_SSID     "Moonrider_00"
-#define WIFI_STA_PASSWORD "Moonrider@567"
+#define WIFI_STA_SSID     "RH-2.4G-8E63D0"
+#define WIFI_STA_PASSWORD "44953B8E63D0"
 
 // ================ MQTT Configuration (HiveMQ Cloud) ================
 #define MQTT_BROKER       "01792b66dfee4540a546dc894922fb94.s1.eu.hivemq.cloud"
