@@ -3,7 +3,7 @@
 #include "ecu_state.h"
 #include "utils.h"
 #include "globals.h"
-#include <time.h>   // for time()
+#include <time.h>   
 
 // ================ SESSION GLOBALS ================
 uint32_t currentSessionId = 0;
@@ -15,7 +15,6 @@ SessionMetadata_t currentSession;
 bool firstConnection = true;
 bool recoveryMode = false;
 
-// External references
 extern ECUState_t ecuState;
 
 void initSessionManager() {
@@ -37,14 +36,14 @@ void startNewSession() {
   fileRecordCounter = 0;
   
   currentSession.sessionId = currentSessionId;
-  currentSession.startEpoch = time(nullptr);   // <-- use epoch
+  currentSession.startEpoch = time(nullptr);   
   currentSession.ecuState = ecuState;
   
   Serial.printf("New session %u started\n", currentSessionId);
 }
 
 void closeCurrentSession(RotateReason_t reason) {
-  currentSession.endEpoch = time(nullptr);     // <-- use epoch
+  currentSession.endEpoch = time(nullptr);     
   currentSession.sessionRecordCount = sessionRecordCounter;
   currentSession.ecuState = ecuState;
   currentSession.rotateReason = reason;
@@ -63,18 +62,18 @@ void incrementFileRecords() {
 }
 
 void handleECUConnection() {
-  // Do NOT start a session here. Sessions are now started only by filtered signals.
+  
   Serial.println("ECU connected (waiting for filtered signals)");
 }
 
 void handleECUDisconnection() {
-  // Handle in ECU state machine
+ 
 }
 
 void updateSessionMetadata() {
   currentSession.fileSequence = currentFileSequence;
   currentSession.fileRecordCount = fileRecordCounter;
-  currentSession.fileSize = 0; // Will be updated by file manager
+  currentSession.fileSize = 0; 
 }
 
 void printSessionStatus() {

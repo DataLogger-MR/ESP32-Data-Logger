@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 
-// GPS data structure
 struct GPSData {
     double latitude;
     double longitude;
@@ -34,7 +33,6 @@ struct GPSData {
     unsigned long lastUpdate;
 };
 
-// Compass data structure
 struct CompassData {
     float heading_deg;
     String cardinal_direction;
@@ -47,7 +45,6 @@ struct CompassData {
     unsigned long lastUpdate;
 };
 
-// Statistics
 struct GPSStatistics {
     unsigned long uptime_ms;
     unsigned long lastFixTime_ms;

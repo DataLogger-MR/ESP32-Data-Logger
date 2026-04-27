@@ -10,28 +10,23 @@ TinyGPSPlus gps;
 HardwareSerial gpsSerial(1);
 Adafruit_HMC5883_Unified mag = Adafruit_HMC5883_Unified(12345);
 
-// Magnetic declination for Bangalore (adjust as needed)
-float declinationAngle = 0.55;  // degrees
+float declinationAngle = 0.55;  
 
-// Calibration offsets
 float magOffsetX = 0;
 float magOffsetY = 0;
 
 // ================ INITIALIZATION ================
 void initGPS() {
     
-    // Use runtime GPS baud rate
     gpsSerial.begin(gpsBaudRate, SERIAL_8N1, 16, 17);
     delay(100);
     
-    // Clear any pending data
     while (gpsSerial.available()) {
         gpsSerial.read();
     }
     
     gpsInitialized = true;
     
-    // Reset GPS data structure
     resetGPSData();
     
 }
@@ -48,7 +43,6 @@ void resetGPSData() {
     gpsData.hdop_valid = false;
     gpsData.satellites_valid = false;
     
-    // Reset statistics
     gpsStats.uptime_ms = millis();
     gpsStats.lastFixTime_ms = 0;
     gpsStats.maxSpeed_kmh = 0;
@@ -71,12 +65,10 @@ void initCompass() {
     
     compassInitialized = true;
     
-    // Display sensor info
     sensor_t sensor;
     mag.getSensor(&sensor);
     Serial.printf("✅ %s found\n", sensor.name);
     
-    // Initialize with zero offsets (calibration needed)
     compassData.offset_x = 0;
     compassData.offset_y = 0;
     compassData.valid = false;
@@ -133,12 +125,10 @@ void updateGPS() {
     unsigned long now = millis();
     static unsigned long lastValidPrint = 0;
     
-    // Read all available GPS data
     while (gpsSerial.available() > 0) {
         gps.encode(gpsSerial.read());
     }
     
-    // Update GPS data structure
     gpsData.location_valid = gps.location.isValid();
     gpsData.time_valid = gps.time.isValid();
     gpsData.date_valid = gps.date.isValid();
@@ -153,18 +143,16 @@ void updateGPS() {
         gpsData.longitude = gps.location.lng();
         gpsData.lastUpdate = now;
         
-        // Update statistics
         if (gps.speed.kmph() > gpsStats.maxSpeed_kmh) {
             gpsStats.maxSpeed_kmh = gps.speed.kmph();
         }
         
-        // Calculate distance if moving
         if (gpsData.speed_valid && gps.speed.kmph() > 1.0) {
             if (gpsStats.lastLat != 0 && gpsStats.lastLng != 0) {
                 gpsStats.totalDistance_km += TinyGPSPlus::distanceBetween(
                     gpsStats.lastLat, gpsStats.lastLng,
                     gpsData.latitude, gpsData.longitude
-                ) / 1000.0;  // Convert meters to km
+                ) / 1000.0;  
             }
             gpsStats.lastLat = gpsData.latitude;
             gpsStats.lastLng = gpsData.longitude;
@@ -194,7 +182,7 @@ void updateGPS() {
         gpsData.hour_utc = gps.time.hour();
         gpsData.minute_utc = gps.time.minute();
         gpsData.second_utc = gps.time.second();
-        calculateLocalTime();  // Calculate IST
+        calculateLocalTime();  
     }
     
     if (gpsData.date_valid) {
@@ -211,8 +199,7 @@ void updateGPS() {
         gpsData.satellites = gps.satellites.value();
     }
     
-    // Print valid data status periodically
-    if (now - lastValidPrint > 30000) { // Every 30 seconds
+    if (now - lastValidPrint > 30000) { 
         if (gpsData.location_valid || gpsData.time_valid) {
             Serial.println("✅ GPS has valid data");
             if (gpsData.location_valid) {
@@ -228,7 +215,6 @@ void updateGPS() {
         lastValidPrint = now;
     }
     
-    // --- MODIFIED: Only set uartDataPresent, do NOT start a session ---
     if (gpsData.location_valid || gpsData.time_valid) {
         uartDataPresent = true;
         lastUARTActivity = now;
@@ -242,16 +228,13 @@ void updateCompass() {
     sensors_event_t event;
     mag.getEvent(&event);
     
-    // Store raw data
     compassData.raw_x = event.magnetic.x;
     compassData.raw_y = event.magnetic.y;
     compassData.raw_z = event.magnetic.z;
     
-    // Apply calibration offsets
     float x = event.magnetic.x - magOffsetX;
     float y = event.magnetic.y - magOffsetY;
     
-    // Calculate heading
     float heading = atan2(y, x);
     heading += declinationAngle * (M_PI / 180.0);
     
@@ -267,7 +250,6 @@ void updateCompass() {
 void calculateLocalTime() {
     if (!gpsData.time_valid) return;
     
-    // IST = UTC + 5:30
     int localHour = gpsData.hour_utc + 5;
     int localMinute = gpsData.minute_utc + 30;
     
@@ -294,7 +276,6 @@ String getCardinalDirection(float heading) {
 void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
     int pos = 0;
     
-    // GPS Data
     if (gpsData.location_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%.6f,%.6f", 
                         gpsData.latitude, gpsData.longitude);
@@ -322,7 +303,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",,");
     }
     
-    // Time (UTC)
     if (gpsData.time_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%02d:%02d:%02d",
                         gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
@@ -330,7 +310,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",");
     }
     
-    // Date
     if (gpsData.date_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%04d-%02d-%02d",
                         gpsData.year, gpsData.month, gpsData.day);
@@ -338,7 +317,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",");
     }
     
-    // Time (IST)
     if (gpsData.time_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%02d:%02d:%02d",
                         gpsData.hour_ist, gpsData.minute_ist, gpsData.second_utc);
@@ -346,7 +324,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",");
     }
     
-    // Quality
     if (gpsData.satellites_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%d", gpsData.satellites);
     } else {
@@ -359,7 +336,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",");
     }
     
-    // Compass
     if (compassData.valid && isValid(compassData.lastUpdate, 5000, currentTime)) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%.1f,%s,%.1f,%.1f,%.1f",
                         compassData.heading_deg, compassData.cardinal_direction.c_str(),
@@ -368,7 +344,6 @@ void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",,,,,");
     }
     
-    // Statistics
     unsigned long uptime_seconds = (currentTime - gpsStats.uptime_ms) / 1000;
     pos += snprintf(buffer + pos, bufferSize - pos, ",%lu,%.1f,%.3f",
                     uptime_seconds, gpsStats.maxSpeed_kmh, gpsStats.totalDistance_km);

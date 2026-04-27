@@ -6,7 +6,6 @@ I2CConfig i2cConfig;
 bool i2cConfigLoaded = false;
 
 // ------------------------------------------------------------------
-// Save config to SPIFFS as JSON
 bool saveI2CConfig(const I2CConfig& config) {
     DynamicJsonDocument doc(8192);
     JsonArray devices = doc.createNestedArray("devices");
@@ -26,7 +25,7 @@ bool saveI2CConfig(const I2CConfig& config) {
             s["unit"] = sig.unit;
             s["bitMask"] = sig.bitMask;
             s["isMapped"] = sig.isMapped;
-            s["channel"] = sig.channel;   // <-- new field
+            s["channel"] = sig.channel;   
             if (sig.isMapped) {
                 JsonObject mapObj = s.createNestedObject("mapping");
                 for (const auto& pair : sig.valueMapping) {
@@ -92,7 +91,7 @@ void loadI2CConfig() {
             sig.unit = s["unit"].as<String>();
             sig.bitMask = s["bitMask"] | 0;
             sig.isMapped = s["isMapped"] | false;
-            sig.channel = s["channel"] | -1;   // <-- new, default -1
+            sig.channel = s["channel"] | -1;   
             if (sig.isMapped) {
                 JsonObject mapObj = s["mapping"];
                 for (JsonPair kv : mapObj) {
@@ -110,10 +109,9 @@ void loadI2CConfig() {
 }
 
 // ------------------------------------------------------------------
-// CSV parsing (simple, assumes no quoted commas)
 bool parseI2CConfigCSV(const String& csv, I2CConfig& config) {
     config.devices.clear();
-    std::map<String, I2CDeviceConfig*> deviceMap; // key = type+":"+address
+    std::map<String, I2CDeviceConfig*> deviceMap; 
 
     int lineStart = 0;
     int lineEnd;
@@ -123,7 +121,7 @@ bool parseI2CConfigCSV(const String& csv, I2CConfig& config) {
         line.trim();
         lineStart = lineEnd + 1;
         if (line.length() == 0) continue;
-        if (firstLine) { firstLine = false; continue; } // skip header
+        if (firstLine) { firstLine = false; continue; } 
 
         std::vector<String> fields;
         int fieldStart = 0, fieldEnd;
@@ -132,7 +130,7 @@ bool parseI2CConfigCSV(const String& csv, I2CConfig& config) {
             fieldStart = fieldEnd + 1;
         }
         fields.push_back(line.substring(fieldStart));
-        // Expect 11 columns: DeviceType,Address,SignalName,Enabled,Factor,Offset,Unit,BitMask,Invert,Channel,Mapping
+        
         if (fields.size() < 11) continue;
 
         String devType = fields[0];
@@ -150,7 +148,7 @@ bool parseI2CConfigCSV(const String& csv, I2CConfig& config) {
             bitMask = (uint16_t)strtol(bitStr, NULL, 10);
         }
         bool invert = fields[8].toInt() != 0;
-        int8_t channel = fields[9].toInt();            // <-- new
+        int8_t channel = fields[9].toInt();            
         String mappingStr = fields[10];
 
         String devKey = devType + ":" + String(addr);
@@ -201,7 +199,7 @@ bool parseI2CConfigCSV(const String& csv, I2CConfig& config) {
         sig.bitMask = bitMask;
         sig.isMapped = isMapped;
         sig.invert = invert;
-        sig.channel = channel;          // <-- new
+        sig.channel = channel;          
         sig.valueMapping = valueMapping;
         dev->signals.push_back(sig);
     }
@@ -221,7 +219,7 @@ String i2cConfigToCSV(const I2CConfig& config) {
             csv += sig.unit + ",";
             csv += "0x" + String(sig.bitMask, HEX) + ",";
             csv += String(sig.invert ? "1" : "0") + ",";
-            csv += String(sig.channel) + ",";   // <-- new column
+            csv += String(sig.channel) + ",";   
             if (sig.isMapped) {
                 bool first = true;
                 for (const auto& pair : sig.valueMapping) {

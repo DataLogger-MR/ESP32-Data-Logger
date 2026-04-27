@@ -8,7 +8,6 @@
 #include "gps_types.h"
 #include "gps_globals.h"
 
-// Function prototypes
 void initGPS();
 void initCompass();
 void calibrateCompass(int duration_seconds = 15);
@@ -17,6 +16,6 @@ void updateCompass();
 void calculateLocalTime();
 String getCardinalDirection(float heading);
 void formatGPSCSV(char* buffer, size_t bufferSize, unsigned long currentTime);
-void resetGPSData();  // ADD THIS
+void resetGPSData();  
 
 #endif

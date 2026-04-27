@@ -1,6 +1,6 @@
 #include "sd_card.h"
 #include "utils.h"
-#include "globals.h"  // Add this
+#include "globals.h" 
 
 bool sdReady = false;
 

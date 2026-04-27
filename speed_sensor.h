@@ -7,11 +7,10 @@
 #define SPEED_SENSOR_PIN Encoder_PWM
 #define PULSES_PER_REVOLUTION 5
 
-// Low Pass Filter configuration
-#define LPF_ALPHA 0.15f  // Lower = smoother, Higher = faster response
+#define LPF_ALPHA 0.15f  
 
 struct SpeedData {
-    float rpm;                  // Low-pass filtered RPM
+    float rpm;                
     unsigned long lastUpdate;
     bool valid;
     unsigned long timeoutMs;

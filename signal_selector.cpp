@@ -4,7 +4,7 @@
 #include "esp_task_wdt.h"
 #include "dbc_parser.h"
 #include "config.h"
-#include <set>          // <-- add this line
+#include <set>          
 
 bool loadSelectedSignals(const char* path, std::map<uint32_t, std::vector<DBCSignal>>& activeMap) {
     File file = SPIFFS.open(path, FILE_READ);
@@ -18,7 +18,6 @@ bool loadSelectedSignals(const char* path, std::map<uint32_t, std::vector<DBCSig
     for (JsonObject item : arr) {
         uint32_t id = item["id"];
         const char* sigName = item["signal"];
-        // Not used in current flow; kept for future.
     }
     return true;
 }
@@ -30,7 +29,6 @@ bool saveSelectedSignals(const char* path, const std::map<uint32_t, std::vector<
         return false;
     }
 
-    // Write opening bracket
     file.print('[');
 
     bool first = true;
@@ -43,18 +41,17 @@ bool saveSelectedSignals(const char* path, const std::map<uint32_t, std::vector<
                 }
                 first = false;
 
-                // Write one signal object
                 file.print("{\"id\":");
                 file.print(pair.first);
                 file.print(",\"signal\":\"");
-                // Escape any double quotes in signal name (rare)
+               
                 String escaped = sig.name;
                 escaped.replace("\"", "\\\"");
                 file.print(escaped);
                 file.print("\"}");
 
                 count++;
-                // Feed watchdog every 50 signals
+                
                 if (count % 50 == 0) {
                     esp_task_wdt_reset();
                     yield();
@@ -63,7 +60,6 @@ bool saveSelectedSignals(const char* path, const std::map<uint32_t, std::vector<
         }
     }
 
-    // Write closing bracket
     file.print(']');
     file.close();
 
@@ -89,7 +85,7 @@ void buildActiveMap(const std::vector<DBCMessage>& messages, std::map<uint32_t, 
 void clearActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& activeMap) {
     activeMap.clear();
 }
-// Add to signal_selector.cpp (include required headers)
+
 #include "dbc_parser.h"
 #include <SPIFFS.h>
 #include "config.h"
@@ -106,14 +102,12 @@ bool loadCANActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& canActiveMap) 
         return false;
     }
 
-    // Load all DBC messages
     std::vector<DBCMessage> messages;
     if (!loadDBCMessagesFromJson(messages, "/dbc/messages.json")) {
         Serial.println("Failed to load DBC messages");
         return false;
     }
 
-    // Load selected signals list
     File file = SPIFFS.open(SIGNAL_CONFIG_PATH, FILE_READ);
     if (!file) {
         Serial.println("Failed to open signal config");
@@ -127,7 +121,6 @@ bool loadCANActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& canActiveMap) 
         return false;
     }
 
-    // Build a map of message ID → set of selected signal names
     std::map<uint32_t, std::set<String>> selectedMap;
     JsonArray arr = doc.as<JsonArray>();
     for (JsonObject obj : arr) {
@@ -136,7 +129,6 @@ bool loadCANActiveMap(std::map<uint32_t, std::vector<DBCSignal>>& canActiveMap) 
         selectedMap[id].insert(sigName);
     }
 
-    // For each message, keep only the selected signals
     for (auto& msg : messages) {
         std::vector<DBCSignal> selectedSignals;
         for (auto& sig : msg.signals) {
