@@ -117,22 +117,11 @@ String buildDynamicCSVHeader() {
         }
     }
     // Hardcoded thermocouples with short names
-    header += ",TC1";
-    header += ",TC2";
-    header += ",TC3";
-    header += ",TC4";
-    header += ",TC5";
-    header += ",TC6";
-    header += ",TC7";
-    header += ",TC8";
-    header += ",TC9";
-    header += ",TC10";
-    header += ",TC11";
-    header += ",TC12";
+    header += ",TC1,TC2,TC3,TC4,TC5,TC6,TC7,TC8,TC9,TC10,TC11,TC12";
 
-    // I2C signals from config (skip MCP9600, which is already handled above)
+    // I2C signals from config (skip MCP9600)
     for (const auto& dev : i2cConfig.devices) {
-        if (dev.type == "MCP9600") continue;   // skip to avoid duplicates
+        if (dev.type == "MCP9600") continue;
         for (const auto& sig : dev.signals) {
             if (sig.enabled) {
                 header += "," + sig.name;
@@ -140,8 +129,10 @@ String buildDynamicCSVHeader() {
         }
     }
 
+    // Speed Sensor column - ALWAYS present, never blank
     header += ",Speed_RPM";
-    // GPS columns - ONLY 4 PARAMETERS
+    
+    // GPS columns
     header += ",Latitude,Longitude,Altitude_m,Speed_kmh";
     return header;
 }
