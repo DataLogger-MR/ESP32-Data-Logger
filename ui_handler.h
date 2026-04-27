@@ -15,14 +15,12 @@ void processUICommand(char* cmd);
 void sendToUI(const char* message);
 void sendToUILn(const char* message);
 
-// Command handlers
 void handleFileManagementCommands(char* cmd, char* param);
 void handleDiagCommands(char* cmd, char* param);
 void handleSystemCommands(char* cmd);
 void processConfigCommand(String cmd);
 void sendSessionHistory();
 
-// Response functions
 void sendStatus();
 void sendCardInfo();
 void sendHelp();

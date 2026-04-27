@@ -5,13 +5,13 @@
 
 // ================ FILE TYPE DEFINITIONS ================
 typedef enum {
-  FILE_TYPE_DATA,           // Normal data logging
-  FILE_TYPE_DIAG_DISCONNECT, // ECU disconnect event
-  FILE_TYPE_DIAG_RECOVERY,   // System recovery
-  FILE_TYPE_DIAG_ERROR,      // Error condition
-  FILE_TYPE_DIAG_BUSOFF,     // Bus-off event
-  FILE_TYPE_SYSTEM,          // System logs
-  FILE_TYPE_TEMP             // Temporary files
+  FILE_TYPE_DATA,           
+  FILE_TYPE_DIAG_DISCONNECT, 
+  FILE_TYPE_DIAG_RECOVERY,   
+  FILE_TYPE_DIAG_ERROR,      
+  FILE_TYPE_DIAG_BUSOFF,     
+  FILE_TYPE_SYSTEM,          
+  FILE_TYPE_TEMP             
 } FileType_t;
 
 // ================ ECU STATE DEFINITIONS ================
@@ -20,7 +20,7 @@ typedef enum {
   ECU_STATE_CONNECTED,
   ECU_STATE_DISCONNECTED,
   ECU_STATE_DEGRADED,
-  ECU_STATE_SILENT           // Connected but no messages (ECU off)
+  ECU_STATE_SILENT           
 } ECUState_t;
 
 // ================ SESSION STATE DEFINITIONS ================
@@ -48,17 +48,17 @@ typedef enum {
 // ================ CAN FILTER STRUCTURE ================
 typedef struct {
   uint32_t id;
-  bool isExtended;  // true for extended (29-bit), false for standard (11-bit)
-  const char* name; // Message name for debugging
-  uint16_t timeoutMs; // Timeout in milliseconds (0 = no timeout)
+  bool isExtended;  
+  const char* name; 
+  uint16_t timeoutMs; 
 } CanFilter_t;
 
 // ================ SESSION METADATA STRUCTURE ================
 typedef struct {
   uint32_t sessionId;
   uint32_t fileSequence;
-  time_t startEpoch;          // Unix timestamp (seconds since 1970-01-01 UTC)
-  time_t endEpoch;            // Unix timestamp (seconds since 1970-01-01 UTC)
+  time_t startEpoch;          
+  time_t endEpoch;            
   char fileName[64];
   uint32_t sessionRecordCount;
   uint32_t fileRecordCount;
@@ -70,40 +70,36 @@ typedef struct {
 
 // ================ BATTERY DATA STRUCTURES ================
 
-// BATT_ST1 (0x2F4) - Battery pack data
 typedef struct {
-  float voltage;          // BattVolt in Volts
-  float current;          // BattCurr in Amps
-  uint8_t soc;            // SOC in percentage
+  float voltage;         
+  float current;          
+  uint8_t soc;            
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } BattSt1_t;
 
-// CELL_VOLT (0x4F4) - Cell voltage data
 typedef struct {
-  uint16_t maxCellVolt;   // MaxCellVolt in mV
-  uint8_t maxCellNo;      // Max cell position
-  uint16_t minCellVolt;   // MinCellVolt in mV
-  uint8_t minCellNo;      // Min cell position
+  uint16_t maxCellVolt;   
+  uint8_t maxCellNo;      
+  uint16_t minCellVolt;   
+  uint8_t minCellNo;      
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } CellVolt_t;
 
-// CELL_TEMP (0x5F4) - Cell temperature data
 typedef struct {
-  int8_t maxCellTemp;     // Max cell temperature in °C
-  uint8_t maxCtNO;        // Max temperature cell position
-  int8_t minCellTemp;     // Min cell temperature in °C
-  uint8_t minCtNO;        // Min temperature cell position
-  int8_t avgCellTemp;     // Average cell temperature in °C
+  int8_t maxCellTemp;     
+  uint8_t maxCtNO;        
+  int8_t minCellTemp;     
+  uint8_t minCtNO;        
+  int8_t avgCellTemp;     
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } CellTemp_t;
 
-// ALM_INFO (0x7F4) - Alarm information
 typedef struct {
   uint8_t singleOverpressure;
   uint8_t singleUnderpressure;
@@ -114,36 +110,33 @@ typedef struct {
   uint8_t tooLowTemperature;
   uint8_t socTooLow;
   uint8_t internalCommFailure;
-  float chgEngCons;        // Charging energy consumption in KWh
-  float dchgEngCons;       // Discharging energy consumption in KWh
+  float chgEngCons;        
+  float dchgEngCons;       
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } AlmInfo_t;
 
-// BMS_6 (0x08F4) - Current limits
 typedef struct {
-  float cdcl;     // Continuous Discharging Current Limit in A
-  float cccl;     // Continuous Charging Current Limit in A
-  float pdcl;     // Peak Discharging Current Limit in A
-  float pccl;     // Peak Charging Current Limit in A
+  float cdcl;     
+  float cccl;     
+  float pdcl;     
+  float pccl;     
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } Bms6_t;
 
-// BATT_ST2 (0x18F128F4) - Battery stats
 typedef struct {
-  float capRemain;        // Remaining capacity in AH
-  float fulChargeCap;     // Full charge capacity in AH
-  float cycleCap;         // Cycle capacity in AH
-  uint16_t cycleCount;    // Number of battery cycles
+  float capRemain;        
+  float fulChargeCap;     
+  float cycleCap;         
+  uint16_t cycleCount;    
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } BattSt2_t;
 
-// ALL_TEMP (0x18F228F4) - All temperatures
 typedef struct {
   uint8_t tempMaskCode;
   int8_t cellTemp1;
@@ -156,7 +149,6 @@ typedef struct {
   unsigned long timeoutMs;
 } AllTemp_t;
 
-// BMSERR_INFO (0x18F328F4) - Error information
 typedef struct {
   bool excessLineResistance;
   bool mosTooWarm;
@@ -183,55 +175,50 @@ typedef struct {
   unsigned long timeoutMs;
 } BmsErrInfo_t;
 
-// BMS_INFO (0x18F428F4) - BMS info
 typedef struct {
-  uint32_t bmsRunTime;     // BMS runtime in seconds
-  uint16_t heatCur;        // Heater current in mA
-  uint8_t soh;             // State of Health in %
+  uint32_t bmsRunTime;     
+  uint16_t heatCur;        
+  uint8_t soh;             
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } BmsInfo_t;
 
-// BmsSwSta (0x18F528F4) - Switch states
 typedef struct {
-  bool chgMosSta;          // Charge MOS status
-  bool dchgMosSta;         // Discharge MOS status
-  bool balanSta;           // Balancing status
-  bool heatSta;            // Heater status
-  bool chgDevPlugSta;      // Charger plugged status
-  bool accSta;             // ACC status
+  bool chgMosSta;          
+  bool dchgMosSta;         
+  bool balanSta;           
+  bool heatSta;            
+  bool chgDevPlugSta;      
+  bool accSta;             
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } BmsSwSta_t;
 
-// CellVol_x (0x18Ex28F4) - Individual cell voltages (up to 25 cells)
 typedef struct {
-  uint16_t cellVoltages[25];  // Cell voltages in mV (index 0 = cell 1)
+  uint16_t cellVoltages[25];  
   uint8_t cellCount;
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } CellVoltages_t;
 
-// BMSChgINFO (0x1806E5F4) - Charging info
 typedef struct {
-  float chgVol;            // Charging voltage in V
-  float chgCur;            // Charging current in A
-  bool chgDevSw;           // Charger switch
-  bool chgAndHeat;         // Charging/heating mode
+  float chgVol;            
+  float chgCur;            
+  bool chgDevSw;           
+  bool chgAndHeat;         
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } BmsChgInfo_t;
 
-// Ctrl_INFO (0x18F0F428) - Control info
 typedef struct {
   uint8_t maskCode;
-  bool chgSw;              // Charge switch
-  bool dchgSw;             // Discharge switch
-  bool balanSw;            // Balancing switch
+  bool chgSw;              
+  bool dchgSw;             
+  bool balanSw;            
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
@@ -239,20 +226,19 @@ typedef struct {
 
 // MCU_MSG_1 (0x102200A0)
 typedef struct {
-  uint8_t dcVolt;          // DC Voltage in V
-  uint8_t motorTemp;       // Motor temperature in °C
-  uint8_t cntrlTemp;       // Controller temperature in °C
-  uint8_t throttlePercent; // Throttle percentage
+  uint8_t dcVolt;          
+  uint8_t motorTemp;       
+  uint8_t cntrlTemp;       
+  uint8_t throttlePercent; 
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } McuMsg1_t;
 
-// MCU_MSG_2 (0x102200A1)
 typedef struct {
   uint8_t speedMode;
-  uint16_t motorSpeed;     // Motor speed in RPM
-  uint16_t motorSpdLim;    // Motor speed limit
+  uint16_t motorSpeed;     
+  uint16_t motorSpdLim;    
   bool regenStatus;
   bool reverseStatus;
   bool forwardStatus;
@@ -274,7 +260,6 @@ typedef struct {
   unsigned long timeoutMs;
 } McuMsg2_t;
 
-// MCU_MSG_3 (0x102200A2)
 typedef struct {
   uint16_t productId;
   uint32_t serialId;
@@ -284,10 +269,9 @@ typedef struct {
   unsigned long timeoutMs;
 } McuMsg3_t;
 
-// MCU_MSG_4 (0x102200A3)
 typedef struct {
-  float phaseCurrent;      // Phase current in A
-  uint32_t tripDistance;   // Trip distance in km
+  float phaseCurrent;      
+  uint32_t tripDistance;   
   bool direction;
   bool modeA;
   bool modeB;
@@ -302,10 +286,8 @@ typedef struct {
   unsigned long timeoutMs;
 } McuMsg4_t;
 
-// MCU_MSG_5 (0x102200A4)
 typedef struct {
   uint16_t obdCode;
-  // MBIST faults
   bool mbistMotorParams;
   bool mbistDevLock;
   bool mbistPhCurOffset;
@@ -319,7 +301,7 @@ typedef struct {
   bool mbistWatchdog;
   bool mbistLoopSat;
   bool mbistLoopOscil;
-  // ABIST faults
+
   bool abistFeaParam;
   bool abistThrottle;
   bool abistBrdOt;
@@ -331,7 +313,6 @@ typedef struct {
   unsigned long timeoutMs;
 } McuMsg5_t;
 
-// MCU_MSG_6 (0x102200A5)
 typedef struct {
   uint8_t deratingStatus;
   bool valid;
@@ -339,29 +320,26 @@ typedef struct {
   unsigned long timeoutMs;
 } McuMsg6_t;
 
-// AUX_MOTOR_1 (0x19FF50F0)
 typedef struct {
-  float torqueEst;         // Estimated torque in Nm
-  uint16_t speedEst;       // Estimated speed in RPM
-  uint8_t controllerTemp;  // Controller temperature in °C
-  uint8_t motorTemp;       // Motor temperature in °C
+  float torqueEst;         
+  uint16_t speedEst;       
+  uint8_t controllerTemp;  
+  uint8_t motorTemp;       
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } AuxMotor1_t;
 
-// AUX_MOTOR_2 (0x19FF50F1)
 typedef struct {
-  float motorCurrent;      // Motor current in A
-  float motorVoltage;      // Motor voltage in V
-  float mcuVoltage;        // MCU voltage in V
-  uint8_t canLife;         // CAN life counter
+  float motorCurrent;      
+  float motorVoltage;     
+  float mcuVoltage;       
+  uint8_t canLife;         
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
 } AuxMotor2_t;
 
-// AUX_MOTOR_3 (0x19FF50F2)
 typedef struct {
   bool igbtFault;
   bool hwOcFault;
@@ -399,10 +377,9 @@ typedef struct {
   unsigned long timeoutMs;
 } AuxMotor3_t;
 
-// CHRG_OUT (0x18FF50E5)
 typedef struct {
-  float chargerVoltageOut;   // Charger output voltage in V
-  float chargerCurrentOut;   // Charger output current in A
+  float chargerVoltageOut;   
+  float chargerCurrentOut;   
   bool hardwareError;
   bool chargerTempFault;
   bool inputVoltageFault;
@@ -411,8 +388,8 @@ typedef struct {
   bool outputVoltageFault;
   bool outputOverCurrent;
   bool outputShortCircuit;
-  float chargerInputAcVolt;  // AC input voltage in V
-  int8_t chargerInternalTemp; // Internal temperature in °C
+  float chargerInputAcVolt;  
+  int8_t chargerInternalTemp; 
   bool valid;
   unsigned long lastUpdate;
   unsigned long timeoutMs;
@@ -423,15 +400,15 @@ struct DBCSignal {
     String name;
     uint8_t startBit;
     uint8_t length;
-    bool isIntel;          // true = Intel, false = Motorola
+    bool isIntel;          
     float scale;
     float offset;
     float minVal;
     float maxVal;
     String unit;
-    bool isSigned;         // true if signal is signed (two's complement)
-    bool isSelected;       // for UI
-    String receiver;       // Added: receiver node (e.g., "CLUSTER")
+    bool isSigned;         
+    bool isSelected;       
+    String receiver;       
 };
 
 struct DBCMessage {

@@ -9,7 +9,7 @@
 #include "globals.h"
 #include "gps_globals.h"
 #include "i2c_sensors.h"
-#include "i2c_config.h"            // for dynamic I2C config
+#include "i2c_config.h"            
 #include <SPIFFS.h>
 #include <map>
 #include <vector>
@@ -25,7 +25,7 @@ WebServer server(80);
 String wifiStatus = "Disconnected";
 String wifiIP = "";
 
-static File uploadFile;          // for DBC upload
+static File uploadFile;          
 
 
 // ================ MQTT Client ================
@@ -33,7 +33,7 @@ WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 bool mqttReady = false;
 unsigned long lastMQTTSend = 0;
-const unsigned long MQTT_INTERVAL = 1000; // send every 1 second
+const unsigned long MQTT_INTERVAL = 1000; 
 
 #define DYNAMIC_SIGNAL_TIMEOUT_MS 2000
 
@@ -42,10 +42,10 @@ extern SemaphoreHandle_t influxStatsMutex;
 extern unsigned long influxTotalTime;
 extern unsigned long influxCount;
 extern std::map<String, double> i2cValues;
-// Add these with other extern declarations
+
 extern String wifiSSID;
 extern String wifiPassword;
-// External references
+
 extern const char* ap_ssid;
 extern const char* ap_password;
 extern BattSt1_t battSt1;
@@ -70,10 +70,8 @@ extern bool dynamicMode;
 extern std::map<String, double> lastDynamicValues;
 extern SemaphoreHandle_t dataMutex;
 
-// I2C sensor data
-extern I2CSensorData sensorData;   // already present
+extern I2CSensorData sensorData;  
 
-// Forward declarations of DBC handlers
 void handleDBCUploadFile();
 void handleDBCUpload();
 void handleDBCParse();
@@ -81,13 +79,11 @@ void handleDBCSave();
 void handleDBCStatus();
 void handleDBCDelete();
 
-// Forward declarations of I2C config handlers
 void handleI2CGetConfig();
 void handleI2CSaveConfig();
 void handleI2CConfigPage();
 void createI2CConfigHTML();
 
-// NEW: I2C CSV upload/download handlers
 void handleI2CUploadFile();
 void handleI2CUpload();
 void handleI2CDownloadCSV();
@@ -149,7 +145,6 @@ void sendMQTTData() {
     };
 
     if (dynamicMode) {
-        // ---- DBC signals: per‑signal freshness ----
         std::map<String, double> localValues;
         std::map<String, unsigned long> localTimes;
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
@@ -162,11 +157,10 @@ void sendMQTTData() {
         for (const auto& pair : localValues) {
             auto itTime = localTimes.find(pair.first);
             bool fresh = (itTime != localTimes.end() && (now - itTime->second) <= DYNAMIC_SIGNAL_TIMEOUT_MS);
-            double val = fresh ? pair.second : 0.0;   // or -9999 if you prefer
+            double val = fresh ? pair.second : 0.0;   
             addField(true, val, pair.first);
         }
 
-        // ---- I2C sensors: group freshness (all updated together) ----
         unsigned long i2cAge = now - sensorData.lastScanTime;
         bool i2cFresh = (i2cAge <= DYNAMIC_SIGNAL_TIMEOUT_MS);
         for (const auto& pair : i2cValues) {
@@ -174,8 +168,7 @@ void sendMQTTData() {
             addField(true, val, pair.first);
         }
 
-        // ---- GPS data (already has per‑field validity) ----
-        // GPS data - only keep latitude, longitude, speed_kmh, altitude
+        // ---- GPS data ----
       if (gpsInitialized) {
           if (gpsData.location_valid) {
               addField(true, gpsData.latitude, "G-Lat");
@@ -189,12 +182,10 @@ void sendMQTTData() {
           }
       }
         
-        // ========== SPEED SENSOR - JUST ADD ==========
         addField(true, speedData.rpm, "speed_rpm");
-        // ============================================
+        
         
     } else {
-        // Static mode – use per‑structure timeouts (already handled by isValid)
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.voltage, "voltage");
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.current, "current");
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.soc, "soc");
@@ -205,7 +196,6 @@ void sendMQTTData() {
         addField(isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now), cellVolt.maxCellVolt, "max_cell_voltage");
         addField(isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now), cellVolt.minCellVolt, "min_cell_voltage");
 
-        // I2C sensors – still use group freshness
         unsigned long i2cAge = now - sensorData.lastScanTime;
         bool i2cFresh = (i2cAge <= DYNAMIC_SIGNAL_TIMEOUT_MS);
         for (const auto& pair : i2cValues) {
@@ -213,7 +203,6 @@ void sendMQTTData() {
             addField(true, val, pair.first);
         }
 
-        // GPS data (same as dynamic mode)
         if (gpsInitialized) {
             if (gpsData.location_valid) {
                 addField(true, gpsData.latitude, "G-lat");
@@ -255,12 +244,10 @@ void sendMQTTData() {
         }
     }
 
-    // Always add uptime
     if (dataAdded) payload += ",";
     else payload += " ";
     payload += "uptime=" + String(now / 1000.0, 2);
 
-    // Ensure buffer size is sufficient
     if (payload.length() > mqttClient.getBufferSize()) {
         mqttClient.setBufferSize(payload.length() + 100);
     }
@@ -339,25 +326,20 @@ void initWiFi() {
 
 // ================ Web server setup ================
 void startWebServer() {
-    // Allow large uploads (up to 1MB)
     server.setContentLength(1024 * 1024);
 
-    // DBC API endpoints
     server.on("/api/dbc/upload", HTTP_POST, handleDBCUpload, handleDBCUploadFile);
     server.on("/api/dbc/parse", HTTP_GET, handleDBCParse);
     server.on("/api/dbc/save", HTTP_POST, handleDBCSave);
     server.on("/api/dbc/status", HTTP_GET, handleDBCStatus);
     server.on("/api/dbc/delete", HTTP_POST, handleDBCDelete);
 
-    // I2C config API endpoints
     server.on("/api/i2c/config", HTTP_GET, handleI2CGetConfig);
     server.on("/api/i2c/config", HTTP_POST, handleI2CSaveConfig);
-    // NEW: I2C CSV upload/download
     server.on("/api/i2c/upload", HTTP_POST, handleI2CUpload, handleI2CUploadFile);
     server.on("/api/i2c/config/csv", HTTP_GET, handleI2CDownloadCSV);
     server.on("/i2c_config.html", HTTP_GET, handleI2CConfigPage);
 
-    // DBC HTML page
     server.on("/dbc.html", []() {
         File file = SPIFFS.open("/dbc.html", FILE_READ);
         if (!file) {
@@ -368,7 +350,6 @@ void startWebServer() {
         file.close();
     });
 
-    // Redirect root to /dbc.html
     server.on("/", HTTP_GET, []() {
         server.sendHeader("Location", "/dbc.html");
         server.send(302, "text/plain", "");
@@ -377,7 +358,6 @@ void startWebServer() {
     server.onNotFound(handleNotFound);
     server.begin();
 
-    // Always recreate I2C config HTML to ensure latest version is served
     createI2CConfigHTML();
 }
 
@@ -389,7 +369,6 @@ void handleWebServer() {
 void handleDBCUploadFile() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        // Check available SPIFFS space
         size_t freeSpace = SPIFFS.totalBytes() - SPIFFS.usedBytes();
         if (upload.totalSize > freeSpace) {
             server.send(507, "text/plain", "Insufficient SPIFFS space");
@@ -420,11 +399,11 @@ void handleDBCUploadFile() {
 }
 
 void handleDBCUpload() {
-    // Do nothing
+   
 }
 
 void handleDBCParse() {
-    // Check free heap – DBC parsing may need ~60KB
+    
     if (ESP.getFreeHeap() < 60000) {
         server.send(503, "text/plain", "Insufficient memory – try again later");
         return;
@@ -521,7 +500,7 @@ void handleDBCDelete() {
     SPIFFS.remove("/dbc/upload.dbc");
     SPIFFS.remove("/dbc/messages.json");
     SPIFFS.remove(SIGNAL_CONFIG_PATH);
-    setActiveSignals({});  // Clear active signals
+    setActiveSignals({});  
     setDynamicMode(false);
     server.send(200, "text/plain", "Deleted");
 }
@@ -605,7 +584,7 @@ void handleI2CSaveConfig() {
     }
 
     if (saveI2CConfig(newConfig)) {
-        // Update global config
+        
         i2cConfig = newConfig;
         server.send(200, "text/plain", "OK");
     } else {
@@ -614,7 +593,7 @@ void handleI2CSaveConfig() {
 }
 
 void handleI2CConfigPage() {
-    // Ensure the HTML file exists (it will be created by startWebServer)
+    
     if (!SPIFFS.exists("/i2c_config.html")) {
         createI2CConfigHTML();
     }
@@ -901,7 +880,6 @@ void handleI2CUploadFile() {
             i2cUploadFile.close();
             Serial.printf("I2C CSV upload end, size: %d\n", upload.totalSize);
 
-            // Read back and parse
             File f = SPIFFS.open("/config/i2c_upload.csv", FILE_READ);
             String csv = f.readString();
             f.close();
@@ -921,7 +899,7 @@ void handleI2CUploadFile() {
 }
 
 void handleI2CUpload() {
-    // dummy GET handler
+    
 }
 
 void handleI2CDownloadCSV() {

@@ -1,5 +1,5 @@
 #include "utils.h"
-#include <sys/time.h>   // for gettimeofday
+#include <sys/time.h>   
 
 uint32_t getBits(const uint8_t* data, int startBit, int length) {
   uint32_t result = 0;
@@ -12,8 +12,8 @@ uint32_t getBits(const uint8_t* data, int startBit, int length) {
 }
 
 bool isValid(unsigned long lastUpdate, unsigned long timeoutMs, unsigned long currentTime) {
-  if (lastUpdate == 0) return false; // Never received
-  if (timeoutMs == 0) return true; // No timeout
+  if (lastUpdate == 0) return false; 
+  if (timeoutMs == 0) return true; 
   return (currentTime - lastUpdate) <= timeoutMs;
 }
 
@@ -28,8 +28,8 @@ String getFormattedTime() {
     gettimeofday(&tv, NULL);
     time_t now = tv.tv_sec;
     struct tm *timeinfo = localtime(&now);
-    if (timeinfo->tm_year < 100) {   // time not yet set
-        return String(millis());      // fallback
+    if (timeinfo->tm_year < 100) {   
+        return String(millis());      
     }
     char buffer[30];
     sprintf(buffer, "%02d:%02d:%02d.%03ld",

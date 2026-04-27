@@ -2,7 +2,7 @@
 #define WIFI_MANAGER_H
 
 #include <WiFi.h>
-#include <WiFiClientSecure.h>      // For TLS connection
+#include <WiFiClientSecure.h>      
 #include <WebServer.h>
 #include <PubSubClient.h>
 #include "config.h"
@@ -17,13 +17,12 @@ extern String wifiIP;
 
 // ================ MQTT Configuration (HiveMQ Cloud) ================
 #define MQTT_BROKER       "01792b66dfee4540a546dc894922fb94.s1.eu.hivemq.cloud"
-#define MQTT_PORT         8883                     // TLS port
+#define MQTT_PORT         8883                    
 #define MQTT_TOPIC        "tractor/data"
 #define MQTT_CLIENT_ID    "ESP32_Tractor_Logger"
-#define MQTT_USERNAME     "MR_TRACTOR"             // Replace with your actual username
-#define MQTT_PASSWORD     "#Lokesh000"   // Replace with the password you set
+#define MQTT_USERNAME     "MR_TRACTOR"             
+#define MQTT_PASSWORD     "#Lokesh000"   
 
-// Use WiFiClientSecure for TLS
 extern WiFiClientSecure espClient;
 extern PubSubClient mqttClient;
 extern bool mqttReady;
@@ -35,9 +34,8 @@ void startWebServer();
 void handleWebServer();
 void createDBCFileIfNeeded();
 void sendMQTTData();
-void sendInfluxDBData();   // Keep for compatibility, will call MQTT
+void sendInfluxDBData();  
 
-// Web server handlers
 void handleRoot();
 void handleLiveData();
 void handleFileList();
@@ -48,14 +46,12 @@ String listFilesHTML(File dir, String path);
 String listFilesText(File dir, String path);
 String getWebPage();
 
-// DBC handlers
 void handleDBCUpload();
 void handleDBCParse();
 void handleDBCSave();
 void handleDBCStatus();
 void handleDBCDelete();
 
-// I2C config handlers
 void handleI2CGetConfig();
 void handleI2CSaveConfig();
 void handleI2CConfigPage();

@@ -14,7 +14,6 @@
 char uiCommandBuffer[128];
 int uiCommandIndex = 0;
 
-// External references
 extern bool loggingActive;
 extern unsigned long lastStatsTime;
 extern SessionState_t sessionState;
@@ -35,7 +34,6 @@ extern char sessionLogPath[];
 extern uint32_t lastRecError;
 extern uint32_t lastTecError;
 
-// Add these with other extern declarations
 extern int logIntervalMs;
 extern int maxFileSizeMB;
 extern bool rotateHourlyEnabled;
@@ -46,9 +44,8 @@ extern String wifiSSID;
 extern String wifiPassword;
 extern int bufferSize;
 extern int ecuTimeout;
-extern void saveConfigToSPIFFS();  // Add this function declaration
+extern void saveConfigToSPIFFS();  
 
-// Function declarations from other modules
 extern void deleteFile(const char* fileName);
 extern void createTestFile(const char* fileName);
 extern void listLogsByDate(int year, int month, int day);
@@ -91,7 +88,6 @@ void processConfigCommand(String cmd) {
     cmd.trim();
     bool configChanged = false;
     
-    // Debug: Print the command being processed
     Serial.print("Processing config command: ");
     Serial.println(cmd);
     
@@ -139,21 +135,21 @@ void processConfigCommand(String cmd) {
     }
     else if (cmd.startsWith("config logging includedate")) {
         int includeDate = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-        // Note: INCLUDE_DATE_IN_FILENAME is a #define, so this is informational only
+        
         Serial.printf("Include date in filename: %s (requires restart)\n", includeDate ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Include date change requires restart");
         configChanged = true;
     }
     else if (cmd.startsWith("config logging printcanmsgs")) {
         int printMsgs = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-        // Note: PRINT_EVERY_MESSAGE is a #define, so this is informational only
+        
         Serial.printf("Print CAN messages: %s (requires recompile)\n", printMsgs ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Print CAN messages requires recompile");
         configChanged = true;
     }
     else if (cmd.startsWith("config logging printlogged")) {
         int printLogged = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-        // Note: PRINT_LOGGED_DATA is a #define, so this is informational only
+  
         Serial.printf("Print logged data: %s (requires recompile)\n", printLogged ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Print logged data requires recompile");
         configChanged = true;
@@ -185,7 +181,6 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config wifi ssid")) {
         String ssid = cmd.substring(cmd.indexOf(' ', 15) + 1);
         ssid.trim();
-        // Remove quotes if present
         if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
             ssid = ssid.substring(1, ssid.length() - 1);
         }
@@ -201,7 +196,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config wifi password")) {
         String password = cmd.substring(cmd.indexOf(' ', 15) + 1);
         password.trim();
-        // Remove quotes if present
+      
         if (password.startsWith("\"") && password.endsWith("\"")) {
             password = password.substring(1, password.length() - 1);
         }
@@ -215,7 +210,7 @@ void processConfigCommand(String cmd) {
         }
     }
     else if (cmd.startsWith("config wifi apssid")) {
-        // AP SSID is defined in config.cpp, this is informational only
+      
         String apSsid = cmd.substring(cmd.indexOf(' ', 15) + 1);
         apSsid.trim();
         Serial.printf("AP SSID would be set to %s (requires recompile)\n", apSsid.c_str());
@@ -223,7 +218,7 @@ void processConfigCommand(String cmd) {
         configChanged = true;
     }
     else if (cmd.startsWith("config wifi appassword")) {
-        // AP Password is defined in config.cpp, this is informational only
+      
         String apPassword = cmd.substring(cmd.indexOf(' ', 15) + 1);
         apPassword.trim();
         Serial.printf("AP Password would be set (requires recompile)\n");
@@ -280,7 +275,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt topic")) {
         String topic = cmd.substring(cmd.indexOf(' ', 15) + 1);
         topic.trim();
-        // Remove quotes if present
+        
         if (topic.startsWith("\"") && topic.endsWith("\"")) {
             topic = topic.substring(1, topic.length() - 1);
         }
@@ -291,7 +286,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt clientid")) {
         String clientId = cmd.substring(cmd.indexOf(' ', 15) + 1);
         clientId.trim();
-        // Remove quotes if present
+    
         if (clientId.startsWith("\"") && clientId.endsWith("\"")) {
             clientId = clientId.substring(1, clientId.length() - 1);
         }
@@ -302,7 +297,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt username")) {
         String username = cmd.substring(cmd.indexOf(' ', 15) + 1);
         username.trim();
-        // Remove quotes if present
+        
         if (username.startsWith("\"") && username.endsWith("\"")) {
             username = username.substring(1, username.length() - 1);
         }
@@ -313,7 +308,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt password")) {
         String password = cmd.substring(cmd.indexOf(' ', 15) + 1);
         password.trim();
-        // Remove quotes if present
+      
         if (password.startsWith("\"") && password.endsWith("\"")) {
             password = password.substring(1, password.length() - 1);
         }
@@ -368,18 +363,16 @@ void processConfigCommand(String cmd) {
         configChanged = true;
     }
     else {
-        // Unknown command - log it for debugging
+     
         Serial.printf("Unknown config command: %s\n", cmd.c_str());
         sendToUILn("CONFIG_ERROR: Unknown configuration command");
         return;
     }
     
-    // Save to SPIFFS if any config changed
     if (configChanged) {
         saveConfigToSPIFFS();
         sendToUILn("CONFIG_SAVED_TO_SPIFFS");
         
-        // Print current config to verify
         Serial.println("\n=== CONFIGURATION SAVED ===");
         Serial.printf("logIntervalMs: %d\n", logIntervalMs);
         Serial.printf("maxFileSizeMB: %d\n", maxFileSizeMB);
@@ -401,11 +394,10 @@ void processUICommand(char* cmd) {
   Serial.print(cmd);
   Serial.println("\"");
   
-  // Handle batch commands (multiple lines separated by newlines)
   if (strchr(cmd, '\n') != NULL) {
     char* line = strtok(cmd, "\n");
     while (line != NULL) {
-      // Trim whitespace
+     
       while (*line == ' ') line++;
       if (strlen(line) > 0) {
         Serial.printf("Processing batch command: %s\n", line);
@@ -416,10 +408,8 @@ void processUICommand(char* cmd) {
     return;
   }
   
-  // Trim whitespace
   while (*cmd == ' ') cmd++;
   
-  // Check if this is a config command FIRST (before splitting)
   if (strncmp(cmd, "config", 6) == 0) {
     processConfigCommand(String(cmd));
     return;
@@ -446,12 +436,12 @@ void processUICommand(char* cmd) {
       sendToUILn("ERROR: Unknown command");
     }
   } else {
-    // Handle commands without spaces (list, status, etc.)
+    
     if (strcmp(cmd, "list") == 0) {
       listFiles();
     } else if (strcmp(cmd, "listdiag") == 0) {
       listDiagFiles();
-    } else if (strcmp(cmd, "sessions") == 0) {           // NEW: Session history command
+    } else if (strcmp(cmd, "sessions") == 0) {           
       sendSessionHistory();
     } else if (strcmp(cmd, "info") == 0) {
       sendCardInfo();
@@ -821,37 +811,17 @@ void sendGPSInfo() {
 }
 
 void applyConfigurationChanges() {
-    // Apply logging interval change
-    // Note: LOG_INTERVAL_MS is a #define, so we need to use the runtime variable
-    // The logging task already uses logIntervalMs, so no change needed
-    
-    // Apply GPS baud rate (would require restarting GPS)
-    // For now, just print a message
+
     if (gpsInitialized) {
         Serial.printf("GPS baud rate changed to %d - will apply on next GPS restart\n", gpsBaudRate);
-        // You could restart the GPS task here, but that's complex
-        // For simplicity, just note that it requires restart
     }
     
-    // Apply GPS update interval - this is used in the GPS task
-    // The GPS task reads gpsUpdateInterval, so it will take effect immediately
-    
-    // Apply buffer size - this would require reallocating buffers
-    // For now, just note that it requires restart
     Serial.printf("Buffer size changed to %d - will apply on next restart\n", bufferSize);
     
-    // Apply ECU timeout - used in ECU state machine
-    // The ECU state machine reads ecuTimeout, so it will take effect immediately
-    
-    // Apply WiFi settings - would require reconnecting
     if (wifiSSID.length() > 0 && wifiPassword.length() > 0) {
         Serial.printf("WiFi settings changed - would need to reconnect\n");
-        // You could trigger WiFi reconnection here
     }
-    
-    // Update file rotation settings
-    // These are used in needsFileRotation(), so they take effect immediately
-    
+       
     sendToUILn("CONFIG_APPLIED");
 }
 
@@ -876,13 +846,12 @@ void sendSessionHistory() {
     
     sendToUILn("SESSION_HISTORY_BEGIN");
     
-    // Read and send all session records
     bool firstLine = true;
     while (file.available()) {
         String line = file.readStringUntil('\n');
         line.trim();
         if (line.length() > 0) {
-            // Skip the header line if present
+        
             if (firstLine && line.startsWith("SessionID")) {
                 firstLine = false;
                 continue;
