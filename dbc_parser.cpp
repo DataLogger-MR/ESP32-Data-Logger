@@ -2,7 +2,6 @@
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
 
-// Forward declaration
 bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum);
 
 bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& messages) {
@@ -16,30 +15,26 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
     DBCMessage currentMsg;
     bool inMessage = false;
     int lineNum = 0;
-    String signalBuffer = "";          // for multi-line signals
-    bool inSignal = false;              // true if we are collecting a multi-line signal
+    String signalBuffer = "";         
+    bool inSignal = false;             
 
     while (file.available()) {
         String line = file.readStringUntil('\n');
         lineNum++;
-        line.trim();                     // remove leading/trailing spaces
+        line.trim();                     
 
         if (line.length() == 0) continue;
 
-        // Skip full-line comments (after trimming)
         if (line.startsWith("//")) continue;
 
-        // Check for start of a new message
         if (line.startsWith("BO_ ")) {
-            // If we were collecting a signal, finalize it (should not happen, but safe)
             if (inSignal && signalBuffer.length() > 0) {
-                // This line is a new message, so the previous signal is incomplete – discard
+          
                 Serial.printf("Warning: Incomplete signal at line %d\n", lineNum);
                 signalBuffer = "";
                 inSignal = false;
             }
 
-            // Save previous message if any
             if (inMessage) messages.push_back(currentMsg);
             inMessage = true;
             inSignal = false;
@@ -51,11 +46,11 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
 
             int matched = sscanf(line.c_str(), "BO_ %lu %[^:]: %d %s", &id, name, &dlc, transmitter);
             if (matched == 4) {
-                currentMsg.id = (uint32_t)id & 0x1FFFFFFF;  // 29‑bit mask
+                currentMsg.id = (uint32_t)id & 0x1FFFFFFF;  
                 currentMsg.name = String(name);
                 currentMsg.dlc = dlc;
                 currentMsg.transmitter = String(transmitter);
-                currentMsg.isExtended = (id > 0x7FF);       // rough heuristic
+                currentMsg.isExtended = (id > 0x7FF);      
                 currentMsg.signals.clear();
             } else {
                 matched = sscanf(line.c_str(), "BO_ %lu %[^:]: %d", &id, name, &dlc);
@@ -71,11 +66,10 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
                 }
             }
         }
-        // Handle signal lines
+        
         else if (line.startsWith("SG_")) {
-            // If we were already collecting a signal, the previous one was complete? Actually, a new SG_ means previous is done.
+           
             if (inSignal && signalBuffer.length() > 0) {
-                // Process the previously buffered signal
                 DBCSignal sig;
                 if (parseSignalLine(signalBuffer, sig, lineNum)) {
                     currentMsg.signals.push_back(sig);
@@ -84,7 +78,6 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
                 inSignal = false;
             }
 
-            // Check if this line contains a colon – if yes, it's a complete signal
             if (line.indexOf(':') >= 0) {
                 DBCSignal sig;
                 if (parseSignalLine(line, sig, lineNum)) {
@@ -92,16 +85,16 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
                 }
                 inSignal = false;
             } else {
-                // No colon, start multi-line accumulation
+              
                 signalBuffer = line;
                 inSignal = true;
             }
         }
-        // Continuation of a multi-line signal (line does not start with SG_ but we are inside a signal)
+      
         else if (inSignal) {
-            // Append this line to the buffer
+            
             signalBuffer += " " + line;
-            // If we now have a colon, the signal is complete
+           
             if (signalBuffer.indexOf(':') >= 0) {
                 DBCSignal sig;
                 if (parseSignalLine(signalBuffer, sig, lineNum)) {
@@ -111,10 +104,9 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
                 inSignal = false;
             }
         }
-        // Otherwise, ignore (e.g., comments inside a message, attribute definitions, etc.)
+        
     }
 
-    // End of file: push last message and any pending signal
     if (inMessage) {
         if (inSignal && signalBuffer.length() > 0) {
             DBCSignal sig;
@@ -129,9 +121,7 @@ bool parseDBCFile(fs::FS &fs, const char* path, std::vector<DBCMessage>& message
     return true;
 }
 
-// Helper function to parse a complete signal line (or accumulated buffer)
 bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
-    // The line should contain "SG_ ... : ..."
     String rest = line;
     int sgPos = rest.indexOf("SG_");
     if (sgPos >= 0) {
@@ -145,7 +135,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
         return false;
     }
 
-    // Extract signal name (may include multiplexer indicator)
     String beforeColon = rest.substring(0, colonPos);
     beforeColon.trim();
 
@@ -165,7 +154,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
     String def = rest.substring(colonPos + 1);
     def.trim();
 
-    // Parse bit definition: startBit|length@byteOrder+sign (factor,offset) [min|max] "unit" receiver
     int pipePos = def.indexOf('|');
     int atPos = def.indexOf('@');
     if (pipePos < 0 || atPos < 0) {
@@ -185,7 +173,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
     char signChar = def.charAt(atPos + 2);
     sig.isSigned = (signChar == '-');
 
-    // Parse factor and offset
     int parenOpen = def.indexOf('(');
     int parenClose = def.indexOf(')', parenOpen);
     if (parenOpen < 0 || parenClose < 0) {
@@ -204,7 +191,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
     sig.scale = factorOffset.substring(0, comma).toFloat();
     sig.offset = factorOffset.substring(comma + 1).toFloat();
 
-    // Parse min/max if present
     int bracketOpen = def.indexOf('[', parenClose);
     if (bracketOpen >= 0) {
         int bracketClose = def.indexOf(']', bracketOpen);
@@ -218,7 +204,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
         }
     }
 
-    // Parse unit if present
     int quote1 = def.indexOf('"', parenClose);
     if (quote1 >= 0) {
         int quote2 = def.indexOf('"', quote1 + 1);
@@ -227,7 +212,6 @@ bool parseSignalLine(const String& line, DBCSignal& sig, int lineNum) {
         }
     }
 
-    // Parse receiver (last token)
     int lastSpace = def.lastIndexOf(' ');
     if (lastSpace > parenClose) {
         String possibleReceiver = def.substring(lastSpace + 1);
@@ -249,13 +233,11 @@ bool saveDBCMessagesToJson(const std::vector<DBCMessage>& messages, const char* 
         return false;
     }
 
-    // Write opening bracket
     file.print('[');
 
     for (size_t i = 0; i < messages.size(); i++) {
-        if (i > 0) file.print(','); // comma between messages
+        if (i > 0) file.print(','); 
 
-        // Use a document sized for one message + its signals
         DynamicJsonDocument msgDoc(8192);
         JsonObject msgObj = msgDoc.to<JsonObject>();
         const auto& msg = messages[i];
@@ -290,11 +272,9 @@ bool saveDBCMessagesToJson(const std::vector<DBCMessage>& messages, const char* 
             return false;
         }
 
-        // Serialize this message to the file
         serializeJson(msgDoc, file);
     }
 
-    // Write closing bracket
     file.print(']');
     file.close();
 
@@ -311,14 +291,13 @@ bool loadDBCMessagesFromJsonStreaming(std::vector<DBCMessage>& messages, const c
     char c;
     int braceLevel = 0;
     bool inString = false;
-    char msgBuffer[16384];          // static buffer for one message JSON (16KB)
+    char msgBuffer[16384];         
     int msgIdx = 0;
     bool inMessage = false;
 
     while (file.available()) {
         c = file.read();
 
-        // Handle string boundaries (ignore braces inside strings)
         if (c == '"' && (msgIdx == 0 || msgBuffer[msgIdx-1] != '\\')) {
             inString = !inString;
         }
@@ -327,7 +306,6 @@ bool loadDBCMessagesFromJsonStreaming(std::vector<DBCMessage>& messages, const c
             if (c == '{') {
                 braceLevel++;
                 if (braceLevel == 1) {
-                    // Start of a new message object
                     msgIdx = 0;
                     msgBuffer[msgIdx++] = c;
                     inMessage = true;
@@ -336,16 +314,14 @@ bool loadDBCMessagesFromJsonStreaming(std::vector<DBCMessage>& messages, const c
             } else if (c == '}') {
                 braceLevel--;
                 if (braceLevel == 0 && inMessage) {
-                    // End of current message object
+                    
                     msgBuffer[msgIdx++] = c;
-                    msgBuffer[msgIdx] = '\0'; // null-terminate
+                    msgBuffer[msgIdx] = '\0'; 
 
-                    // Optional: log size of large messages
                     if (msgIdx > 8000) {
                         Serial.printf("Large message JSON: %d bytes\n", msgIdx);
                     }
 
-                    // Parse this message with a document sized for one message
                     DynamicJsonDocument msgDoc(16384);
                     DeserializationError error = deserializeJson(msgDoc, msgBuffer);
                     if (error) {
@@ -402,11 +378,11 @@ bool loadDBCMessagesFromJsonStreaming(std::vector<DBCMessage>& messages, const c
 }
 
 bool loadDBCMessagesFromJson(std::vector<DBCMessage>& messages, const char* jsonPath) {
-    // First try with a large document (192KB)
+    
     File file = SPIFFS.open(jsonPath, FILE_READ);
     if (!file) return false;
 
-    DynamicJsonDocument doc(196608); // 192KB
+    DynamicJsonDocument doc(196608); 
     DeserializationError error = deserializeJson(doc, file);
     file.close();
 

@@ -18,7 +18,6 @@ char currentFilePath[128] = "";
 unsigned long currentFileSize = 0;
 RotateReason_t lastRotateReason = ROTATE_REASON_NONE;
 
-// External references (defined in other modules)
 extern uint32_t currentSessionId;
 extern uint32_t currentFileSequence;
 extern uint32_t sessionRecordCounter;
@@ -41,7 +40,6 @@ extern uint32_t lastTecError;
 extern HardwareSerial Serial2;
 extern char sessionLogPath[];
 
-// Add with other extern declarations
 extern int canBaudRate;
 extern int canRxQueueSize;
 extern String mqttBroker;
@@ -51,7 +49,6 @@ extern String mqttClientId;
 extern String mqttUsername;
 extern String mqttPassword;
 
-// Forward declarations
 void sendFileNormal(const char* fullPath, const char* displayName);
 bool sendFileCompressed(const char* fullPath, const char* displayName);
 void sendDataInChunks(uint8_t* data, size_t dataSize);
@@ -86,7 +83,7 @@ void generateFilePath(char* buffer, size_t len, FileType_t fileType,
   const char* typePrefix = getFileTypePrefix(fileType);
   
   if (timeinfo->tm_year < 100) {
-    // Time not yet set – place files directly in /logs/
+  
     if (fileType == FILE_TYPE_DATA) {
       snprintf(buffer, len, "/logs/%s_%lu_S%uF%u.csv", 
                typePrefix, millis(), sessionId, fileSeq);
@@ -97,7 +94,6 @@ void generateFilePath(char* buffer, size_t len, FileType_t fileType,
     return;
   }
   
-  // Time is set – use date-based subdirectories
   if (fileType == FILE_TYPE_DATA) {
     snprintf(buffer, len, "/logs/%04d/%02d/%02d/%s_%04d%02d%02d_%02d%02d_S%uF%u.csv",
              timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
@@ -116,29 +112,23 @@ void generateFilePath(char* buffer, size_t len, FileType_t fileType,
 }
 
 void createNewLogFile() {
-    unsigned long startTime = micros();   // DEBUG: timing
+    unsigned long startTime = micros();   
 
     if (!sdReady) return;
 
-    // ========== CRITICAL CHANGE: Wait for time sync ==========
-    // Check if system time is set (RTC, GPS, or NTP)
     time_t now = time(nullptr);
     struct tm *timeinfo = localtime(&now);
     
-    // If time is not set (year < 2020), don't create file yet
-    if (timeinfo->tm_year < 120) {  // tm_year = years since 1900, so 120 = 2020
+    if (timeinfo->tm_year < 120) {  
         Serial.println("⏳ Time not synchronized yet. Waiting for GPS/NTP time...");
         Serial2.println("TIME_SYNC_PENDING");
         
-        // Don't create file, just return
-        // The session will start automatically when time is synced and data arrives
         return;
     }
     // ==========================================================
 
-    // *** NEW: Refresh the dynamic header if we are in dynamic mode ***
     if (dynamicMode) {
-        updateDynamicHeader();   // ensures I2C signal names are up‑to‑date
+        updateDynamicHeader();   
     }
 
     currentFileSequence++;
@@ -163,11 +153,9 @@ void createNewLogFile() {
         logFile.printf("# SESSION_ID: %u, FILE_SEQUENCE: %u, START_TIME: %lu\n",
                        currentSessionId, currentFileSequence, millis() / 1000);
 
-        // Write header based on mode
         if (dynamicMode) {
             logFile.println(getDynamicHeader().c_str());
         } else {
-            // Add after the TotalDist_km column, before RTC_Date
          logFile.println("Timestamp_ms,SessionRecord,FileRecord,SOC,Voltage_V,Current_A,MaxCellNo,MaxCell_mV,MinCellNo,MinCell_mV,MaxCellTemp,MaxCellTempNo,MinCellTemp,MinCellTempNo,AvgCellTemp,CapRemain_AH,FullCap_AH,CycleCap_AH,CycleCount,BMSRunTime_s,HeatCur_mA,SOH,CDCL_A,CCCL_A,PDCL_A,PCCL_A,ChgMos,DchgMos,Balance,Heater,ChargerPlug,ACC,Cell1_mV,Cell2_mV,Cell3_mV,Cell4_mV,Cell5_mV,Cell6_mV,Cell7_mV,Cell8_mV,Cell9_mV,Cell10_mV,Cell11_mV,Cell12_mV,Cell13_mV,Cell14_mV,Cell15_mV,Cell16_mV,MCU_DC_V,MCU_MotorTemp_C,MCU_CntrlTemp_C,MCU_Throttle,MCU_Speed_RPM,MCU_SpeedLimit_RPM,MCU_SpeedMode,AUX_Torque_Nm,AUX_Speed_RPM,AUX_CtrlTemp_C,AUX_MotorTemp_C,AUX_Cur_A,AUX_Volt_V,AUX_MCU_Volt_V,AUX_CanLife,ChgOut_Volt_V,ChgOut_Cur_A,ChgIn_AC_V,ChgIntTemp_C,Latitude,Longitude,Altitude_m,Speed_kmh,Speed_mps,Speed_knots,Course_deg,CardinalDir,Time_UTC,Date,Time_IST,Satellites,HDOP,Compass_deg,CompassDir,MagX_uT,MagY_uT,MagZ_uT,Uptime_s,MaxSpeed_kmh,TotalDist_km,Speed_Hz,Speed_RPM,Speed_kmh_Hall,Speed_mps_Hall,RTC_Date,RTC_Time,RTC_Temp_C,TC1_Temp_C,TC1_Ambient_C,TC1_Fault,TC2_Temp_C,TC2_Ambient_C,TC2_Fault,TC3_Temp_C,TC3_Ambient_C,TC3_Fault,TC4_Temp_C,TC4_Ambient_C,TC4_Fault,TC5_Temp_C,TC5_Ambient_C,TC5_Fault,TC6_Temp_C,TC6_Ambient_C,TC6_Fault,TC7_Temp_C,TC7_Ambient_C,TC7_Fault,TC8_Temp_C,TC8_Ambient_C,TC8_Fault,TC9_Temp_C,TC9_Ambient_C,TC9_Fault,TC10_Temp_C,TC10_Ambient_C,TC10_Fault,TC11_Temp_C,TC11_Ambient_C,TC11_Fault,TC12_Temp_C,TC12_Ambient_C,TC12_Fault,GPIO_State,GPIO0,GPIO1,GPIO2,GPIO3,GPIO4,GPIO5,GPIO6,GPIO7,GPIO8,GPIO9,GPIO10,GPIO11,GPIO12,GPIO13,GPIO14,GPIO15,ADC0_V,ADC0_Raw,ADC1_V,ADC1_Raw,ADC2_V,ADC2_Raw,ADC3_V,ADC3_Raw");
        
         }
@@ -179,7 +167,6 @@ void createNewLogFile() {
 
         currentSession.sessionId = currentSessionId;
         currentSession.fileSequence = currentFileSequence;
-        // startEpoch is already set when the session began (in startNewSession)
         strcpy(currentSession.fileName, currentFilePath);
         currentSession.sessionRecordCount = sessionRecordCounter;
         currentSession.fileRecordCount = 0;
@@ -194,8 +181,8 @@ void createNewLogFile() {
         Serial.println("❌ Failed to create log file!");
     }
 
-    unsigned long duration = micros() - startTime;   // DEBUG
-    if (duration > 100000) {   // >100 ms
+    unsigned long duration = micros() - startTime;   
+    if (duration > 100000) {   
         Serial.printf("⚠️ createNewLogFile took %lu µs\n", duration);
     }
 }
@@ -203,7 +190,6 @@ void createNewLogFile() {
 bool needsFileRotation() {
   if (!sdReady) return false;
   
-  // Use runtime variable instead of compile-time constant
   if (rotateHourlyEnabled) {
     time_t now_time = time(nullptr);
     struct tm *timeinfo = localtime(&now_time);
@@ -222,7 +208,6 @@ bool needsFileRotation() {
     currentHour = newHour;
   }
   
-  // Use runtime max file size
   if (currentFileSize >= (uint64_t)maxFileSizeMB * 1024 * 1024) {
     lastRotateReason = ROTATE_REASON_SIZE;
     return true;
@@ -232,7 +217,7 @@ bool needsFileRotation() {
 }
 
 void rotateFile(RotateReason_t reason) {
-  unsigned long startTime = micros();   // DEBUG
+  unsigned long startTime = micros();   
 
   if (!sdReady) return;
   
@@ -261,8 +246,8 @@ void rotateFile(RotateReason_t reason) {
     createNewLogFile();
   }
 
-  unsigned long duration = micros() - startTime;   // DEBUG
-  if (duration > 200000) {   // >200 ms
+  unsigned long duration = micros() - startTime;   
+  if (duration > 200000) {   
     Serial.printf("⚠️ rotateFile took %lu µs\n", duration);
   }
 }
@@ -270,14 +255,12 @@ void rotateFile(RotateReason_t reason) {
 void closeCurrentFile(RotateReason_t reason) {
     if (!sdReady) return;
 
-    // Set end epoch
-    currentSession.endEpoch = time(nullptr);   // <-- NEW
+    currentSession.endEpoch = time(nullptr);   
 
-    // --- Write header if sessions.csv does not exist ---
     if (!SD.exists(sessionLogPath)) {
         File headerFile = SD.open(sessionLogPath, FILE_WRITE);
         if (headerFile) {
-            // Updated header with new column names
+   
             headerFile.println("SessionID,FileSeq,StartTime,EndTime,FileName,SessionRecords,FileRecords,ECUState,RotateReason,FileSize_Bytes,CleanClosure");
             headerFile.close();
         }
@@ -291,11 +274,9 @@ void closeCurrentFile(RotateReason_t reason) {
     currentSession.fileSize = currentFileSize;
     currentSession.cleanClosure = true;
 
-    // Format timestamps for CSV
     String startStr = formatEpochToLocal(currentSession.startEpoch);
     String endStr = formatEpochToLocal(currentSession.endEpoch);
 
-    // Add to session log
     File file = SD.open(sessionLogPath, FILE_APPEND);
     if (file) {
         file.printf("%u,%u,%s,%s,%s,%u,%u,%d,%d,%lu,%d\n",
@@ -800,12 +781,10 @@ void createTestFile(const char* fileName) {
   String fullPath = fileName;
   if (fileName[0] != '/') fullPath = "/" + String(fileName);
   
-  // Ensure we're creating in logs directory
   if (!fullPath.startsWith("/logs/")) {
     fullPath = "/logs" + fullPath;
   }
   
-  // Create directory if needed
   char dirPath[128];
   strcpy(dirPath, fullPath.c_str());
   char* lastSlash = strrchr(dirPath, '/');
@@ -935,11 +914,9 @@ void saveConfigToSPIFFS() {
     doc["system"]["buffer_size"] = bufferSize;
     doc["system"]["ecu_timeout"] = ecuTimeout;
     
-    // Add CAN settings
     doc["can"]["baud_rate"] = canBaudRate;
     doc["can"]["rx_queue_size"] = canRxQueueSize;
     
-    // Add MQTT settings
     doc["mqtt"]["broker"] = mqttBroker;
     doc["mqtt"]["port"] = mqttPort;
     doc["mqtt"]["topic"] = mqttTopic;
@@ -947,7 +924,6 @@ void saveConfigToSPIFFS() {
     doc["mqtt"]["username"] = mqttUsername;
     doc["mqtt"]["password"] = mqttPassword;
     
-    // Make sure the /config directory exists
     if (!SPIFFS.exists("/config")) {
         if (SPIFFS.mkdir("/config")) {
             Serial.println("✅ Created /config directory");
@@ -956,7 +932,6 @@ void saveConfigToSPIFFS() {
         }
     }
     
-    // Also check if SPIFFS is mounted
     if (!SPIFFS.begin(true)) {
         Serial.println("❌ SPIFFS not mounted!");
         return;
@@ -970,7 +945,6 @@ void saveConfigToSPIFFS() {
             Serial.printf("   Saved values: interval=%d, maxSize=%d, gpsBaud=%d\n", 
                          logIntervalMs, maxFileSizeMB, gpsBaudRate);
             
-            // Verify by reading back
             file.close();
             File verifyFile = SPIFFS.open("/config/settings.json", FILE_READ);
             if (verifyFile) {
@@ -988,7 +962,6 @@ void saveConfigToSPIFFS() {
     } else {
         Serial.println("❌ Failed to open config file for writing");
         
-        // List SPIFFS contents for debugging
         Serial.println("SPIFFS contents:");
         File root = SPIFFS.open("/");
         File f = root.openNextFile();
@@ -1001,7 +974,7 @@ void saveConfigToSPIFFS() {
 }
 
 void loadConfigFromSPIFFS() {
-    // Check if SPIFFS is mounted
+   
     if (!SPIFFS.begin(true)) {
         Serial.println("❌ SPIFFS Mount Failed");
         return;
@@ -1027,7 +1000,6 @@ void loadConfigFromSPIFFS() {
         return;
     }
     
-    // Read values
     logIntervalMs = doc["logging"]["interval_ms"] | 100;
     maxFileSizeMB = doc["logging"]["max_file_size_mb"] | 100;
     rotateHourlyEnabled = doc["logging"]["rotate_hourly"] | false;
@@ -1042,11 +1014,9 @@ void loadConfigFromSPIFFS() {
     bufferSize = doc["system"]["buffer_size"] | 16384;
     ecuTimeout = doc["system"]["ecu_timeout"] | 30000;
     
-    // CAN Settings - use defaults directly (no #defines)
     canBaudRate = doc["can"]["baud_rate"] | 500;
     canRxQueueSize = doc["can"]["rx_queue_size"] | 100;
     
-    // MQTT Settings - use defaults directly (no #defines from wifi_manager.h)
     mqttBroker = doc["mqtt"]["broker"] | "01792b66dfee4540a546dc894922fb94.s1.eu.hivemq.cloud";
     mqttPort = doc["mqtt"]["port"] | 8883;
     mqttTopic = doc["mqtt"]["topic"] | "tractor/data";

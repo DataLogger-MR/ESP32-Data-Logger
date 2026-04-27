@@ -42,7 +42,6 @@ bool acceptCANId(uint32_t id, bool isExtended);
 const char* getMessageName(uint32_t id, bool isExtended);
 void initializeTimeouts();
 
-// Decoder functions
 void decodeBattSt1(const twai_message_t& msg);
 void decodeCellVolt(const twai_message_t& msg);
 void decodeCellTemp(const twai_message_t& msg);
@@ -67,7 +66,7 @@ void decodeAuxMotor2(const twai_message_t& msg);
 void decodeAuxMotor3(const twai_message_t& msg);
 void decodeChrgOut(const twai_message_t& msg);
 
-// Add this after the includes
+
 extern twai_status_info_t twai_status;
 
 #endif

@@ -7,7 +7,7 @@
 // ================ ECU STATE GLOBALS ================
 ECUState_t ecuState = ECU_STATE_UNKNOWN;
 unsigned long ecuDisconnectTimer = 0;
-unsigned long ecuLastMessageTime = 0;   // now based on filteredMessageCount
+unsigned long ecuLastMessageTime = 0;   
 int ecuDisconnectSampleCount = 0;
 int ecuConnectSampleCount = 0;
 uint32_t lastRecError = 0;
@@ -17,8 +17,7 @@ uint32_t tecErrorAccumulator = 0;
 uint32_t errorSampleCount = 0;
 bool busOffDetected = false;
 
-// External references
-extern unsigned long filteredMessageCount;   // <-- use filtered count
+extern unsigned long filteredMessageCount;   
 extern SessionState_t sessionState;
 extern void rotateFile(RotateReason_t reason);
 
@@ -54,7 +53,6 @@ void checkECUState() {
     errorSampleCount++;
   }
   
-  // Use filteredMessageCount instead of messageCount
   bool messageReceived = (filteredMessageCount > ecuLastMessageTime);
   if (messageReceived) {
     ecuLastMessageTime = filteredMessageCount;

@@ -25,7 +25,7 @@ extern unsigned long startTime;
 // ================ FUNCTION PROTOTYPES ================
 void initDataLogger();
 void logDataToSD();
-void flushBuffer();                // kept for compatibility (now empty)
+void flushBuffer();               
 void addToBuffer(const char* data, int len);
 void formatCompleteCSV(char* buffer, size_t bufferSize, 
                        unsigned long timestampMs, unsigned long currentTime);
@@ -35,7 +35,6 @@ void updateDynamicHeader();
 String getDynamicHeader();
 void logDynamicDataToSD();
 
-// New task function for the flush task
 void flushBufferTask(void *pvParameters);
 
 #endif

@@ -16,9 +16,7 @@
 #define AUTO_DELETE_OLD_DAYS 30
 #define ECU_DISCONNECT_TIMEOUT 30000
 #define ECU_RECONNECT_GRACE 10000
-
-// In config.h - add this line
-#define CSV_LINE_BUFFER_SIZE 2048   // Increased buffer size for I2C sensors
+#define CSV_LINE_BUFFER_SIZE 2048   
 
 // ================ DATA LOGGING CONFIG ================
 #define LOG_INTERVAL_MS 100
@@ -35,13 +33,11 @@
 #define DBC_UPLOAD_PATH "/dbc/upload.dbc"
 #define SIGNAL_CONFIG_PATH "/config/signals.json"
 
-// Add after existing DBC defines
 #define UART_UPLOAD_PATH "/uart/upload.csv"
 #define UART_MESSAGES_PATH "/uart/messages.json"
 #define UART_SIGNAL_CONFIG_PATH "/config/uart_signals.json"
-#define UART_ID_BASE 0x80000000   // Reserve a range for UART messages
+#define UART_ID_BASE 0x80000000   
 
-// I2C Sensor Configuration
-#define I2C_UPDATE_INTERVAL_MS 100  // Update I2C sensors every 100 milli second
+#define I2C_UPDATE_INTERVAL_MS 100  
 
 #endif

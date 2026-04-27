@@ -6,7 +6,7 @@
 #include <set> 
 #include <map>
 
-#include "speed_sensor.h"   // <-- ADD THIS LINE
+#include "speed_sensor.h"  
 
 // ================ GLOBAL VARIABLES DECLARATIONS ================
 extern bool sdReady;
@@ -21,7 +21,6 @@ extern unsigned long lastFlushTime;
 extern unsigned long lastLogTime;
 extern char sessionLogPath[];
 
-// Session globals
 extern uint32_t currentSessionId;
 extern uint32_t currentFileSequence;
 extern uint32_t sessionRecordCounter;
@@ -31,7 +30,6 @@ extern SessionMetadata_t currentSession;
 extern bool firstConnection;
 extern bool recoveryMode;
 
-// ECU globals
 extern ECUState_t ecuState;
 extern unsigned long ecuDisconnectTimer;
 extern unsigned long ecuLastMessageTime;
@@ -44,12 +42,10 @@ extern uint32_t tecErrorAccumulator;
 extern uint32_t errorSampleCount;
 extern bool busOffDetected;
 
-// File globals
 extern char currentFilePath[128];
 extern unsigned long currentFileSize;
 extern RotateReason_t lastRotateReason;
 
-// CAN data globals (from can_decoder.h)
 extern BattSt1_t battSt1;
 extern CellVolt_t cellVolt;
 extern CellTemp_t cellTemp;
@@ -73,27 +69,22 @@ extern AuxMotor1_t auxMotor1;
 extern AuxMotor2_t auxMotor2;
 extern AuxMotor3_t auxMotor3;
 extern ChrgOut_t chrgOut;
-extern SemaphoreHandle_t dataMutex;   // Protects lastDynamicValues
+extern SemaphoreHandle_t dataMutex;   
 extern bool uartDataPresent;
 extern std::set<String> selectedUartSignals;
 
-// WiFi globals
 extern String wifiStatus;
 extern String wifiIP;
 
 extern bool dynamicMode;
 extern unsigned long lastCANActivity;
 extern unsigned long lastUARTActivity;
-extern bool dataActive;   // true if either source active
+extern bool dataActive;  
 
-// NEW: count of filtered (selected) signals
 extern unsigned long filteredMessageCount;
 extern unsigned long lastFilteredTime;
-// NEW: I2C sensor values map
 extern std::map<String, double> i2cValues;
 
-// Remove this line - it's now included via speed_sensor.h
-// extern struct SpeedData speedData;
 
 // ================ RUNTIME CONFIGURATION VARIABLES ================
 extern int logIntervalMs;
@@ -110,11 +101,9 @@ extern int csvLineBufferSize;
 extern int currentGpsBaud;
 extern int currentBufferSize;
 
-// CAN Settings
 extern int canBaudRate;
 extern int canRxQueueSize;
 
-// MQTT Settings
 extern String mqttBroker;
 extern int mqttPort;
 extern String mqttTopic;

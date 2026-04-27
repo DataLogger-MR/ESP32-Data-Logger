@@ -226,7 +226,6 @@ void setup() {
     initSpeedSensor();
 
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-    // Set timezone to IST (UTC+5:30)
     setenv("TZ", "IST-5:30", 1);
     tzset();
 }
@@ -264,7 +263,6 @@ void loop() {
     }
     // ========================================
 
-    // --- ECU state check ---
     t1 = micros();
     checkECUState();
     t2 = micros();
@@ -272,7 +270,6 @@ void loop() {
     countECU++;
     updateSpeed();
 
-    // Log data if active
     if (loggingActive && sdReady && now - lastLogTime >= logIntervalMs) {
         t1 = micros();
         lastLogTime = now;
@@ -282,7 +279,6 @@ void loop() {
         countLog++;
     }
 
-    // Manual commands from Serial Monitor
     if (Serial.available()) {
         String usbCmd = Serial.readStringUntil('\n');
         usbCmd.trim();
@@ -293,13 +289,10 @@ void loop() {
         }
     }
 
-    // Emergency check
-    // In loop() - change MAX_FILE_SIZE to maxFileSizeMB
    if (sdReady && (ESP.getFreeHeap() < 10000 || currentFileSize > (uint64_t)maxFileSizeMB * 1024 * 1024 * 1.2)) {
         handleEmergencyShutdown();
     }
 
-    // ECU and session state change tracking
     if (ecuState != oldEcuState) {
         Serial.printf("ECU state changed: %d -> %d\n", oldEcuState, ecuState);
         oldEcuState = ecuState;
@@ -309,7 +302,6 @@ void loop() {
         oldSessionState = sessionState;
     }
 
-    // --- End of loop timing ---
     unsigned long loopEnd = micros();
     unsigned long loopDuration = loopEnd - loopStart;
 
@@ -317,7 +309,6 @@ void loop() {
     totalLoopTime += loopDuration;
     if (loopDuration > maxLoopTime) maxLoopTime = loopDuration;
 
-    // Print debug summary every 5 seconds
     if (millis() - lastDebugPrint > 5000) {
         Serial.printf("\n--- DEBUG SUMMARY (5s) ---\n");
         Serial.printf("Loop: avg=%lu µs, max=%lu µs, count=%lu\n",
@@ -461,7 +452,7 @@ void flushTask(void *pvParameters) {
 
 // ================ GPS TASK ================
 void gpsTask(void *pvParameters) {
-    // Initialize GPS and compass
+    
     initGPS();
     initCompass();
     
@@ -470,10 +461,10 @@ void gpsTask(void *pvParameters) {
     
     bool timeSetFromGPS = false;
     unsigned long lastTimeSyncAttempt = 0;
-    const unsigned long TIME_SYNC_RETRY_INTERVAL = 30000; // Try every 30 seconds
-    unsigned long lastSerialPrint = 0;   // For periodic Serial output
-    unsigned long lastRawPrint = 0;      // For raw NMEA output
-    bool printRawNMEA = false;           // Toggle to enable raw NMEA
+    const unsigned long TIME_SYNC_RETRY_INTERVAL = 30000; 
+    unsigned long lastSerialPrint = 0;   
+    unsigned long lastRawPrint = 0;      
+    bool printRawNMEA = false;           
     
     while (1) {
         updateGPS();
@@ -481,9 +472,8 @@ void gpsTask(void *pvParameters) {
         
         unsigned long now = millis();
         
-        // Try to set time from GPS if not already set
         if (!timeSetFromGPS && gpsData.time_valid && gpsData.date_valid) {
-            // Validate year (must be reasonable)
+            
             if (gpsData.year >= 2020 && gpsData.year <= 2030) {
                 struct tm tm;
                 tm.tm_year = gpsData.year - 1900;
@@ -495,7 +485,7 @@ void gpsTask(void *pvParameters) {
                 tm.tm_isdst = -1;
                 
                 time_t t = mktime(&tm);
-                if (t > 1609459200) { // > 2021-01-01
+                if (t > 1609459200) { 
                     struct timeval tv = { t, 0 };
                     settimeofday(&tv, NULL);
                     
@@ -503,14 +493,12 @@ void gpsTask(void *pvParameters) {
                                  gpsData.year, gpsData.month, gpsData.day,
                                  gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
                     
-                    // Set timezone to IST
                     setenv("TZ", "IST-5:30", 1);
                     tzset();
                     
                     timeSetFromGPS = true;
                     Serial2.println("TIME_SYNC_OK");
                     
-                    // Log local time for verification
                     time_t now_local = time(nullptr);
                     struct tm *local = localtime(&now_local);
                     Serial.printf("Local time (IST): %02d:%02d:%02d\n",
@@ -520,7 +508,6 @@ void gpsTask(void *pvParameters) {
             lastTimeSyncAttempt = now;
         }
         
-        // Periodically remind that we're waiting for GPS time
         if (!timeSetFromGPS && now - lastTimeSyncAttempt > TIME_SYNC_RETRY_INTERVAL) {
             if (gpsData.time_valid) {
                 Serial.println("⏳ GPS time available but date invalid?");
@@ -530,10 +517,9 @@ void gpsTask(void *pvParameters) {
             lastTimeSyncAttempt = now;
         }
 
-        // ========== Print raw NMEA sentences every 5 seconds (toggle with command) ==========
         if (printRawNMEA && (now - lastRawPrint > 5000)) {
             Serial.println("\n--- Raw NMEA Data (last 5 seconds) ---");
-            // Dump the GPS serial buffer (non-destructive)
+          
             while (gpsSerial.available()) {
                 char c = gpsSerial.read();
                 Serial.print(c);
@@ -548,7 +534,7 @@ void gpsTask(void *pvParameters) {
 
 // ================ I2C TASK ================
 void i2cTask(void *pvParameters) {
-    // Initialize I2C sensors
+  
     initI2CSensors();
     
     const TickType_t interval = pdMS_TO_TICKS(I2C_UPDATE_INTERVAL_MS);

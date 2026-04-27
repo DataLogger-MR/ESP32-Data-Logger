@@ -3,7 +3,6 @@
 
 #include "gps_types.h"
 
-// GPS globals declarations
 extern GPSData gpsData;
 extern CompassData compassData;
 extern GPSStatistics gpsStats;

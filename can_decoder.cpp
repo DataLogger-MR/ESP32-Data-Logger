@@ -10,23 +10,20 @@
 #include <Arduino.h>
 
 extern std::map<uint32_t, std::vector<DBCSignal>> activeSignals;
-// External reference for Serial2
 extern HardwareSerial Serial2;
 
 extern std::map<String, double> lastDynamicValues;
 
-// At the top with other globals
 twai_status_info_t twai_status;
 
 // ================ CAN FILTER DEFINITIONS ================
 const CanFilter_t FILTERED_IDS[] = {
-  // Standard IDs (11-bit)
+  
   {0x2F4, false, "BATT_ST1", 100},
   {0x4F4, false, "CELL_VOLT", 500},
   {0x5F4, false, "CELL_TEMP", 2500},
   {0x7F4, false, "ALM_INFO", 500},
   
-  // Extended IDs (29-bit)
   {0x08F4, true, "BMS_6", 500},
   {0x18F128F4, true, "BATT_ST2", 500},
   {0x18F228F4, true, "ALL_TEMP", 2500},
@@ -43,7 +40,6 @@ const CanFilter_t FILTERED_IDS[] = {
   {0x1806E5F4, true, "BMSChgINFO", 2500},
   {0x18F0F428, true, "Ctrl_INFO", 2500},
   
-  // MCU Messages
   {0x102200A0, true, "MCU_MSG_1", 250},
   {0x102200A1, true, "MCU_MSG_2", 250},
   {0x102200A2, true, "MCU_MSG_3", 5000},
@@ -51,12 +47,10 @@ const CanFilter_t FILTERED_IDS[] = {
   {0x102200A4, true, "MCU_MSG_5", 500},
   {0x102200A5, true, "MCU_MSG_6", 500},
   
-  // AUX Motor Messages
   {0x19FF50F0, true, "AUX_MOTOR_1", 50},
   {0x19FF50F1, true, "AUX_MOTOR_2", 50},
   {0x19FF50F2, true, "AUX_MOTOR_3", 50},
   
-  // Charger Messages
   {0x18FF50E5, true, "CHRG_OUT", 2500},
 };
 
@@ -119,7 +113,7 @@ void initCAN() {
   g_config.rx_queue_len = canRxQueueSize;
   
   twai_timing_config_t t_config;
-  // Select timing based on canBaudRate
+  
   switch(canBaudRate) {
     case 125:
       t_config = TWAI_TIMING_CONFIG_125KBITS();
@@ -208,7 +202,7 @@ void decodeBattSt1(const twai_message_t& msg) {
   battSt1.soc = rawSoc;
   battSt1.valid = true;
   battSt1.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -226,7 +220,7 @@ void decodeCellVolt(const twai_message_t& msg) {
   cellVolt.minCellNo = msg.data[5];
   cellVolt.valid = true;
   cellVolt.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -245,7 +239,7 @@ void decodeCellTemp(const twai_message_t& msg) {
   cellTemp.avgCellTemp = (int8_t)msg.data[4] - 50;
   cellTemp.valid = true;
   cellTemp.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;  
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -275,7 +269,7 @@ void decodeAlmInfo(const twai_message_t& msg) {
   
   almInfo.valid = true;
   almInfo.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -299,7 +293,7 @@ void decodeBms6(const twai_message_t& msg) {
   
   bms6.valid = true;
   bms6.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -318,7 +312,7 @@ void decodeBattSt2(const twai_message_t& msg) {
   
   battSt2.valid = true;
   battSt2.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;  
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -339,7 +333,7 @@ void decodeAllTemp(const twai_message_t& msg) {
   
   allTemp.valid = true;
   allTemp.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -374,7 +368,7 @@ void decodeBmsErrInfo(const twai_message_t& msg) {
   
   bmsErrInfo.valid = true;
   bmsErrInfo.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -392,7 +386,7 @@ void decodeBmsInfo(const twai_message_t& msg) {
   
   bmsInfo.valid = true;
   bmsInfo.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -413,7 +407,7 @@ void decodeBmsSwSta(const twai_message_t& msg) {
   
   bmsSwSta.valid = true;
   bmsSwSta.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -437,7 +431,7 @@ void decodeCellVoltage(const twai_message_t& msg, int startCell) {
   }
   cellVoltages.valid = true;
   cellVoltages.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -456,7 +450,7 @@ void decodeBmsChgInfo(const twai_message_t& msg) {
   
   bmsChgInfo.valid = true;
   bmsChgInfo.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -475,7 +469,7 @@ void decodeCtrlInfo(const twai_message_t& msg) {
   
   ctrlInfo.valid = true;
   ctrlInfo.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -494,7 +488,7 @@ void decodeMcuMsg1(const twai_message_t& msg) {
   
   mcuMsg1.valid = true;
   mcuMsg1.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -531,7 +525,7 @@ void decodeMcuMsg2(const twai_message_t& msg) {
   
   mcuMsg2.valid = true;
   mcuMsg2.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -549,7 +543,7 @@ void decodeMcuMsg3(const twai_message_t& msg) {
   
   mcuMsg3.valid = true;
   mcuMsg3.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -577,7 +571,7 @@ void decodeMcuMsg4(const twai_message_t& msg) {
   
   mcuMsg4.valid = true;
   mcuMsg4.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -616,7 +610,7 @@ void decodeMcuMsg5(const twai_message_t& msg) {
   
   mcuMsg5.valid = true;
   mcuMsg5.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -632,7 +626,7 @@ void decodeMcuMsg6(const twai_message_t& msg) {
   
   mcuMsg6.valid = true;
   mcuMsg6.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -651,7 +645,7 @@ void decodeAuxMotor1(const twai_message_t& msg) {
   
   auxMotor1.valid = true;
   auxMotor1.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -670,7 +664,7 @@ void decodeAuxMotor2(const twai_message_t& msg) {
   
   auxMotor2.valid = true;
   auxMotor2.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;  
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();
@@ -717,7 +711,7 @@ void decodeAuxMotor3(const twai_message_t& msg) {
   
   auxMotor3.valid = true;
   auxMotor3.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();

@@ -11,7 +11,6 @@ extern SemaphoreHandle_t dataMutex;
 extern std::map<String, double> lastDynamicValues;
 std::map<String, unsigned long> lastDynamicUpdateTime;
 
-// Set to false if your DBC uses LSB start bits for Motorola signals (as in your matrix)
 bool motorolaStartBitIsMSB = true;
 
 void initDynamicDecoder() {
@@ -29,7 +28,7 @@ void setActiveSignals(const std::map<uint32_t, std::vector<DBCSignal>>& newMap) 
 double extractSignalValue(const uint8_t* data, uint8_t startBit, uint8_t length, bool intel, bool isSigned) {
     uint64_t raw = 0;
     if (intel) {
-        // Intel: startBit is LSB, bits in increasing order
+        
         int bytePos = startBit / 8;
         int bitInByte = startBit % 8;
         for (int i = 0; i < length; i++) {
@@ -43,7 +42,7 @@ double extractSignalValue(const uint8_t* data, uint8_t startBit, uint8_t length,
         }
     } else {
         if (motorolaStartBitIsMSB) {
-            // Standard Motorola: startBit is MSB, bits decreasing within byte, then next byte's MSB
+           
             int bytePos = startBit / 8;
             int bitInByte = startBit % 8;
             for (int i = 0; i < length; i++) {
@@ -56,7 +55,7 @@ double extractSignalValue(const uint8_t* data, uint8_t startBit, uint8_t length,
                 }
             }
         } else {
-            // Alternative: startBit is LSB, bytes are big-endian
+           
             uint64_t rawLE = 0;
             int bytePos = startBit / 8;
             int bitInByte = startBit % 8;
@@ -77,7 +76,6 @@ double extractSignalValue(const uint8_t* data, uint8_t startBit, uint8_t length,
         }
     }
 
-    // Handle signed (two's complement)
     if (isSigned && (raw & (1ULL << (length - 1)))) {
         raw = raw - (1ULL << length);
     }
@@ -93,7 +91,7 @@ void decodeDynamic(const twai_message_t& msg, std::map<String, double>& outValue
             double raw = extractSignalValue(msg.data, sig.startBit, sig.length, sig.isIntel, sig.isSigned);
             double phys = raw * sig.scale + sig.offset;
             outValues[sig.name] = phys;
-            lastDynamicUpdateTime[sig.name] = millis();   // Record the timestamp
+            lastDynamicUpdateTime[sig.name] = millis();  
         }
         xSemaphoreGive(dataMutex);
     }
@@ -107,19 +105,18 @@ void decodeDynamic(const twai_message_t& msg, std::map<String, double>& outValue
     }
 }
 
-// ================ BUILD DYNAMIC CSV HEADER (includes I2C signals) ================
+// ================ CSV HEADER  ================
 String buildDynamicCSVHeader() {
     String header = "Timestamp_ms";
-    // DBC signals
+    
     for (const auto& pair : activeSignals) {
         for (const auto& sig : pair.second) {
             header += "," + sig.name;
         }
     }
-    // Hardcoded thermocouples with short names
+    
     header += ",TC1,TC2,TC3,TC4,TC5,TC6,TC7,TC8,TC9,TC10,TC11,TC12";
 
-    // I2C signals from config (skip MCP9600)
     for (const auto& dev : i2cConfig.devices) {
         if (dev.type == "MCP9600") continue;
         for (const auto& sig : dev.signals) {
@@ -129,10 +126,8 @@ String buildDynamicCSVHeader() {
         }
     }
 
-    // Speed Sensor column - ALWAYS present, never blank
     header += ",Speed_RPM";
     
-    // GPS columns
     header += ",Latitude,Longitude,Altitude_m,Speed_kmh";
     return header;
 }

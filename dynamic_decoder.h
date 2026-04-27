@@ -17,7 +17,6 @@ void decodeDynamic(const twai_message_t& msg, std::map<String, double>& outValue
 String buildDynamicCSVHeader();
 String buildDynamicCSVRow(unsigned long timestamp, const std::map<String, double>& values);
 
-// NEW
 void initDynamicValues(const std::map<uint32_t, std::vector<DBCSignal>>& activeMap);
 
 #endif
