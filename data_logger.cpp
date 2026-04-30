@@ -302,20 +302,6 @@ void formatCompleteCSV(char* buffer, size_t bufferSize,
     }
     
     // ================ GPS DATA SECTION ================
-    static unsigned long lastGpsDebug = 0;
-    if (currentTime - lastGpsDebug > 10000) {
-        Serial.printf("GPS Debug - Initialized: %d, Valid: loc=%d, time=%d, speed=%d, sat=%d\n",
-                     gpsInitialized, gpsData.location_valid, gpsData.time_valid, 
-                     gpsData.speed_valid, gpsData.satellites_valid);
-        if (gpsData.location_valid) {
-            Serial.printf("  Position: %.6f, %.6f\n", gpsData.latitude, gpsData.longitude);
-        }
-        if (gpsData.time_valid) {
-            Serial.printf("  UTC Time: %02d:%02d:%02d\n", 
-                         gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
-        }
-        lastGpsDebug = currentTime;
-    }
     
     if (gpsData.location_valid) {
         pos += snprintf(buffer + pos, bufferSize - pos, ",%.6f,%.6f", 
@@ -441,11 +427,6 @@ void logDataToSD() {
         }
     }
 
-    if (millis() - lastLogCallPrint > 5000) {
-        Serial.printf("logDataToSD() calls/sec: %.2f\n", logCallCount / 5.0);
-        lastLogCallPrint = millis();
-        logCallCount = 0;
-    }
 }
 
 // ================ RESET STATISTICS ================
@@ -549,6 +530,25 @@ void logDynamicDataToSD() {
     }
 
     pos += snprintf(rowBuffer + pos, sizeof(rowBuffer)-pos, ",%.0f", speedData.rpm);
+
+    // ================ CT-CAN SENSORS ================
+    if (isCTDataValid(ctFlow.lastUpdate, ctFlow.timeoutMs, now)) {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",%.2f", ctFlow.flow_lpm);
+    } else {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",");
+    }
+
+    if (isCTDataValid(ctPressure.lastUpdate, ctPressure.timeoutMs, now)) {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",%.2f", ctPressure.pressure_bar);
+    } else {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",");
+    }
+
+    if (isCTDataValid(ctTemp.lastUpdate, ctTemp.timeoutMs, now)) {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",%.2f", ctTemp.temp_celsius);
+    } else {
+        pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",");
+    }
 
     // ------------------ GPS DATA ------------------
 

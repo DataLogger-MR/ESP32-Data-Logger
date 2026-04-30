@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include <PubSubClient.h>
 #include "config.h"
+#include "ct_can_sensors.h"
 
 // ================ WIFI GLOBALS ================
 extern String wifiStatus;
@@ -26,6 +27,9 @@ extern String wifiIP;
 extern WiFiClientSecure espClient;
 extern PubSubClient mqttClient;
 extern bool mqttReady;
+extern CTFlowData ctFlow;
+extern CTPressureData ctPressure;
+extern CTTemperatureData ctTemp;
 
 // ================ FUNCTION PROTOTYPES ================
 void initWiFi();

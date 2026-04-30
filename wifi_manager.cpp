@@ -20,6 +20,7 @@
 #include "dynamic_decoder.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include "ct_can_sensors.h"
 
 WebServer server(80);
 String wifiStatus = "Disconnected";
@@ -184,6 +185,17 @@ void sendMQTTData() {
         
         addField(true, speedData.rpm, "speed_rpm");
         
+      // CT-CAN Sensor Data
+      if (isCTDataValid(ctFlow.lastUpdate, ctFlow.timeoutMs, now)) {
+          addField(true, ctFlow.flow_lpm, "flow_lpm");
+      }
+      if (isCTDataValid(ctPressure.lastUpdate, ctPressure.timeoutMs, now)) {
+          addField(true, ctPressure.pressure_bar, "pressure_bar");
+      }
+      if (isCTDataValid(ctTemp.lastUpdate, ctTemp.timeoutMs, now)) {
+          addField(true, ctTemp.temp_celsius, "temp_celsius");
+      }
+
         
     } else {
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.voltage, "voltage");

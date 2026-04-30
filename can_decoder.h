@@ -5,6 +5,7 @@
 #include "driver/twai.h"
 #include "types.h"
 #include "config.h"
+#include "ct_can_sensors.h"
 
 // ================ CAN FILTER DEFINITIONS ================
 extern const CanFilter_t FILTERED_IDS[];
@@ -35,6 +36,9 @@ extern AuxMotor2_t auxMotor2;
 extern AuxMotor3_t auxMotor3;
 extern ChrgOut_t chrgOut;
 
+extern CTFlowData ctFlow;
+extern CTPressureData ctPressure;
+extern CTTemperatureData ctTemp;
 // ================ FUNCTION PROTOTYPES ================
 void initCAN();
 void processCANMessages();

@@ -222,6 +222,7 @@ void setup() {
     delay(10);
 
     initCAN();
+    initCTSensors(); 
     initECUState();
     initSpeedSensor();
 
@@ -309,38 +310,6 @@ void loop() {
     totalLoopTime += loopDuration;
     if (loopDuration > maxLoopTime) maxLoopTime = loopDuration;
 
-    if (millis() - lastDebugPrint > 5000) {
-        Serial.printf("\n--- DEBUG SUMMARY (5s) ---\n");
-        Serial.printf("Loop: avg=%lu µs, max=%lu µs, count=%lu\n",
-                      totalLoopTime / loopCounter, maxLoopTime, loopCounter);
-        if (countCAN) Serial.printf("  CAN: avg=%lu µs\n", totalCAN / countCAN);
-        if (countWeb) Serial.printf("  Web: avg=%lu µs\n", totalWeb / countWeb);
-        if (countECU) Serial.printf("  ECU: avg=%lu µs\n", totalECU / countECU);
-        if (countLog) Serial.printf("  Log: avg=%lu µs\n", totalLog / countLog);
-        if (countFlush) Serial.printf("  Flush: avg=%lu µs\n", totalFlush / countFlush);
-        if (countStats) Serial.printf("  Stats: avg=%lu µs\n", totalStats / countStats);
-
-        if (influxCount > 0) {
-            unsigned long avgInflux = 0;
-            if (xSemaphoreTake(influxStatsMutex, portMAX_DELAY) == pdTRUE) {
-                avgInflux = influxTotalTime / influxCount;
-                influxTotalTime = 0;
-                influxCount = 0;
-                xSemaphoreGive(influxStatsMutex);
-            }
-            Serial.printf("  Influx: avg=%lu µs\n", avgInflux);
-        }
-
-        Serial.printf("----------------------------\n");
-
-        lastDebugPrint = millis();
-        loopCounter = 0;
-        totalLoopTime = 0;
-        maxLoopTime = 0;
-        totalCAN = totalWeb = totalECU = totalLog = totalFlush = totalStats = 0;
-        countCAN = countWeb = countECU = countLog = countFlush = countStats = 0;
-    }
-
     delay(1);
 }
 
@@ -349,7 +318,8 @@ void processCANMessages() {
     while (twai_receive(&message, 0) == ESP_OK) {
         messageCount++;
         lastCANActivity = millis();
-
+        
+        processCTCANMessage(message);
         if (dynamicMode) {
             auto it = activeSignals.find(message.identifier);
             if (it != activeSignals.end()) {

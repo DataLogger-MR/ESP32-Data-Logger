@@ -5,7 +5,7 @@
 #define SENSOR_UART_TX 17   
 
 
-#define Encoder_PWM 13  
+#define Encoder_PWM 12  
 // ================ PIN CONFIG ================
 #define CAN_RX_PIN 4
 #define CAN_TX_PIN 32

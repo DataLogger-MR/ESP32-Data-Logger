@@ -199,22 +199,6 @@ void updateGPS() {
         gpsData.satellites = gps.satellites.value();
     }
     
-    if (now - lastValidPrint > 30000) { 
-        if (gpsData.location_valid || gpsData.time_valid) {
-            Serial.println("✅ GPS has valid data");
-            if (gpsData.location_valid) {
-                Serial.printf("  Location: %.6f, %.6f\n", gpsData.latitude, gpsData.longitude);
-            }
-            if (gpsData.time_valid) {
-                Serial.printf("  UTC Time: %02d:%02d:%02d\n", 
-                             gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
-            }
-        } else {
-            Serial.println("⏳ GPS waiting for fix...");
-        }
-        lastValidPrint = now;
-    }
-    
     if (gpsData.location_valid || gpsData.time_valid) {
         uartDataPresent = true;
         lastUARTActivity = now;
