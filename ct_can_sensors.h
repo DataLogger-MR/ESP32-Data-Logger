@@ -5,10 +5,10 @@
 #include "driver/twai.h"
 
 // ================ CAN IDs for CT-CAN Sensors ================
-#define CAN_ID_FLOW             0x181    // Node 0x01 - Flow (LPM)
-#define CAN_ID_PRESSURE         0x182    // Node 0x02 - Pressure (Bar)
-#define CAN_ID_TEMP             0x183    // Node 0x03 - Temperature (°C)
-#define CAN_ID_NMT              0x000    // NMT commands
+#define CAN_ID_FLOW             0x181    
+#define CAN_ID_PRESSURE         0x182    
+#define CAN_ID_TEMP             0x183    
+#define CAN_ID_NMT              0x000    
 
 // ================ NMT Commands ================
 #define NMT_START_NODE          0x01

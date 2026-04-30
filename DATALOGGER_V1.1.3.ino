@@ -1,6 +1,6 @@
 /*
- * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v3.0
- * Modular Architecture – with GPS and I2C Sensor integration
+ * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v1.1.3
+ * DataLogger Architecture
  */
 
 #include "config.h"
@@ -70,7 +70,7 @@ TaskHandle_t influxTaskHandle = NULL;
 // ================ FUNCTION PROTOTYPES ================
 void processCANMessages();
 void handleEmergencyShutdown();
-void influxTask(void *pvParameters);   // FreeRTOS task for InfluxDB
+void influxTask(void *pvParameters);   
 
 // ================ LOAD DBC CONFIGURATION ================
 void loadDynamicConfig() {
@@ -148,7 +148,6 @@ void setup() {
     initUI();
     initSD();
 
-    // Mount SPIFFS first
     if (!SPIFFS.begin(true)) {
         Serial.println("❌ SPIFFS Mount Failed!");
     } else {
@@ -156,12 +155,10 @@ void setup() {
             SPIFFS.remove("/dbc.html");
         }
         
-        // Create config directory if it doesn't exist
         if (!SPIFFS.exists("/config")) {
             SPIFFS.mkdir("/config");
         }
         
-        // Load configuration from SPIFFS
         loadConfigFromSPIFFS();
     }
     
@@ -170,7 +167,6 @@ void setup() {
 
     dataMutex = xSemaphoreCreateMutex();
 
-    // Load DBC configuration only
     loadDynamicConfig();
 
     influxStatsMutex = xSemaphoreCreateMutex();
@@ -187,10 +183,8 @@ void setup() {
     initWiFi();
     startWebServer();
 
-    // Initialize data logger
     initDataLogger();
 
-    // Create the InfluxDB task on Core 0
     xTaskCreatePinnedToCore(
         influxTask,
         "InfluxTask",
@@ -201,7 +195,6 @@ void setup() {
         0
     );
 
-    // Create the flush task on Core 0
     xTaskCreatePinnedToCore(
         flushTask,
         "FlushTask",
@@ -235,7 +228,6 @@ void setup() {
 void loop() {
     unsigned long loopStart = micros();
 
-    // --- Web server handling ---
     unsigned long t1 = micros();
     handleWebServer();
     unsigned long t2 = micros();
@@ -244,17 +236,14 @@ void loop() {
 
     unsigned long now = millis();
 
-    // Process UI commands
     processUICommands();
 
-    // --- CAN message processing ---
     t1 = micros();
     processCANMessages();
     t2 = micros();
     totalCAN += (t2 - t1);
     countCAN++;
     
-    // ===== 30‑second inactivity timeout =====
     if (sessionState == SESSION_STATE_ACTIVE) {
         if (lastFilteredTime != 0 && (millis() - lastFilteredTime) > 30000) {
             Serial.println("No filtered data for 30s, closing file...");
@@ -262,7 +251,6 @@ void loop() {
             sessionState = SESSION_STATE_WAITING;
         }
     }
-    // ========================================
 
     t1 = micros();
     checkECUState();

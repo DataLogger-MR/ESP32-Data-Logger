@@ -2,9 +2,8 @@
 #define CONFIG_H
 
 // ================ BUFFER CONFIG ================
-#define BUFFER_SIZE 16384   // 16 KB per buffer
-#define FLUSH_INTERVAL 2000    // Flush every 2 seconds
-// Debug output control: set to 1 to enable verbose debug prints, 0 to disable
+#define BUFFER_SIZE 16384   
+#define FLUSH_INTERVAL 2000    
 #define ENABLE_SERIAL_DEBUG 0
 
 // ================ FILE MANAGEMENT CONFIG ================

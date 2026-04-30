@@ -740,7 +740,7 @@ void decodeChrgOut(const twai_message_t& msg) {
   
   chrgOut.valid = true;
   chrgOut.lastUpdate = millis();
-  filteredMessageCount++;   // <-- ADDED
+  filteredMessageCount++;   
   lastFilteredTime = millis();
   if (sessionState == SESSION_STATE_WAITING) {
       startNewSession();

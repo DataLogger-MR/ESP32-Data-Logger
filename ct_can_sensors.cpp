@@ -44,7 +44,7 @@ void sendNMTStartCommand() {
     message.extd = 0;
     message.data_length_code = 2;
     message.data[0] = NMT_START_NODE;
-    message.data[1] = 0x00;  // Broadcast to all nodes
+    message.data[1] = 0x00;  
     
     if (twai_transmit(&message, pdMS_TO_TICKS(100)) == ESP_OK) {
         Serial.println("[CT-CAN] NMT Start command sent to all nodes");
@@ -58,7 +58,6 @@ void processCTCANMessage(const twai_message_t& msg) {
     unsigned long now = millis();
     uint32_t id = msg.identifier;
     
-    // Flow Sensor (0x181) - Node 0x01
     if (id == CAN_ID_FLOW && msg.data_length_code >= 5) {
         ctFlow.flow_lpm = bytesToFloatCT(msg.data);
         ctFlow.flow_gpm = ctFlow.flow_lpm * 0.264172f;
@@ -72,10 +71,8 @@ void processCTCANMessage(const twai_message_t& msg) {
                          getCTStatusString(ctFlow.status).c_str());
         #endif
         
-        // Removed: filteredMessageCount++, lastFilteredTime, session start logic
     }
     
-    // Pressure Sensor (0x182) - Node 0x02
     else if (id == CAN_ID_PRESSURE && msg.data_length_code >= 5) {
         ctPressure.pressure_bar = bytesToFloatCT(msg.data);
         ctPressure.pressure_psi = ctPressure.pressure_bar * 14.5038f;
@@ -89,10 +86,8 @@ void processCTCANMessage(const twai_message_t& msg) {
                          getCTStatusString(ctPressure.status).c_str());
         #endif
         
-        // Removed: filteredMessageCount++, lastFilteredTime, session start logic
     }
     
-    // Temperature Sensor (0x183) - Node 0x03
     else if (id == CAN_ID_TEMP && msg.data_length_code >= 5) {
         ctTemp.temp_celsius = bytesToFloatCT(msg.data);
         ctTemp.temp_fahrenheit = ctTemp.temp_celsius * 1.8f + 32;
@@ -106,7 +101,6 @@ void processCTCANMessage(const twai_message_t& msg) {
                          getCTStatusString(ctTemp.status).c_str());
         #endif
         
-        // Removed: filteredMessageCount++, lastFilteredTime, session start logic
     }
 }
 
@@ -114,7 +108,6 @@ void processCTCANMessage(const twai_message_t& msg) {
 void initCTSensors() {
     Serial.println("[CT-CAN] Initializing CT Sensors...");
     
-    // Initialize data structures
     memset(&ctFlow, 0, sizeof(CTFlowData));
     memset(&ctPressure, 0, sizeof(CTPressureData));
     memset(&ctTemp, 0, sizeof(CTTemperatureData));
@@ -123,7 +116,6 @@ void initCTSensors() {
     ctPressure.timeoutMs = 1000;
     ctTemp.timeoutMs = 2000;
     
-    // Send NMT start command
     sendNMTStartCommand();
     
     ctSensorsInitialized = true;
@@ -132,6 +124,5 @@ void initCTSensors() {
 
 // ================ Update and Check Timeouts ================
 void updateCTSensors() {
-    // This function can be called periodically to check timeouts
-    // Currently handled in processCTCANMessage
+
 }
