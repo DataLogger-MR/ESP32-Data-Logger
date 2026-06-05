@@ -1,5 +1,5 @@
 /*
- * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v1.1.3
+ * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v1.1.4
  * DataLogger Architecture
  */
 
@@ -258,6 +258,9 @@ void loop() {
     totalECU += (t2 - t1);
     countECU++;
     updateSpeed();
+
+    // ADD THIS LINE - Update CT sensors liveness
+    updateCTSensors();
 
     if (loggingActive && sdReady && now - lastLogTime >= logIntervalMs) {
         t1 = micros();

@@ -63,4 +63,11 @@ String getCTStatusString(uint8_t status);
 void updateCTSensors();
 bool isCTDataValid(unsigned long lastUpdate, unsigned long timeoutMs, unsigned long currentTime);
 
+// Add after existing function declarations
+void checkCTSensorsLiveness();
+void forceStartAllCTNodes();
+void sendNMTStartCommandToNode(uint8_t nodeId);
+void sendNMTCommand(uint8_t nodeId, uint8_t command);
+bool isAnyCTSensorValid();
+
 #endif
