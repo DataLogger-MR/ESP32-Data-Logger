@@ -4,7 +4,6 @@ temp/
 __pycache__/
 *.pyc
 *.spec
-*.exe
 *.dll
 *.log
 *.csv
