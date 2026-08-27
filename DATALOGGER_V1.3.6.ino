@@ -1,6 +1,9 @@
 /*
- * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v1.1.4
- * DataLogger Architecture
+ * COMPLETE BMS DATA LOGGER WITH USB TTL CONTROL v1.3.4
+ * - UI Mode implementation: pauses logging and MQTT when UI is active
+ * - Automatic timeout after 5 seconds of inactivity
+ * - Forced UI mode with "ui on" / "ui off" commands
+ * - Mutex-protected Serial1 writes
  */
 
 #include "config.h"
@@ -29,14 +32,15 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 #include "i2c_sensors.h"
-#include "i2c_task.h"
 #include "speed_sensor.h"
+#include "ads1115_scheduler.h"
 
 SemaphoreHandle_t dataMutex = NULL;
-extern std::map<uint32_t, std::vector<DBCSignal>> activeSignals;
+
+// ================ EXTERN DECLARATIONS ================
 extern std::map<String, double> lastDynamicValues;
+extern std::map<uint32_t, std::vector<DBCSignal>> activeSignals;
 extern bool dynamicMode;
-extern HardwareSerial gpsSerial;
 
 // ================ InfluxDB timing globals ================
 SemaphoreHandle_t influxStatsMutex = NULL;
@@ -50,7 +54,8 @@ TaskHandle_t flushTaskHandle = NULL;
 // ================ FORWARD DECLARATIONS ================
 void flushTask(void *pvParameters);
 void statsTask(void *pvParameters);
-void gpsTask(void *pvParameters);
+void webServerTask(void *pvParameters);
+void uiTask(void *pvParameters);
 
 // ================ DEBUGGING GLOBALS ================
 static unsigned long lastDebugPrint = 0;
@@ -64,13 +69,9 @@ static unsigned long countCAN = 0, countWeb = 0, countECU = 0, countLog = 0, cou
 static ECUState_t oldEcuState = ECU_STATE_UNKNOWN;
 static SessionState_t oldSessionState = SESSION_STATE_BOOT;
 
-// ================ RTOS TASK HANDLE ================
-TaskHandle_t influxTaskHandle = NULL;
-
 // ================ FUNCTION PROTOTYPES ================
 void processCANMessages();
 void handleEmergencyShutdown();
-void influxTask(void *pvParameters);   
 
 // ================ LOAD DBC CONFIGURATION ================
 void loadDynamicConfig() {
@@ -137,15 +138,36 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    Serial2.begin(921600, SERIAL_8N1, UI_RXD2, UI_TXD2);
-    while (Serial2.available()) Serial2.read();
+    // ============================================================
+    // UI on Serial1 (GPIO14, GPIO15) - Hardware UART1
+    // ============================================================
+    Serial1.begin(921600, SERIAL_8N1, UI_RX_PIN, UI_TX_PIN);
+    Serial1.setTimeout(10);
+    while (Serial1.available()) Serial1.read();
+
+    // ============================================================
+    // Serial2 remains for torque sensor on GPIO25, GPIO26
+    // ============================================================
+    // Do NOT call Serial2.begin() here – torque_begin() will handle it.
+
+    // Create the I2C mutex early
+    i2cMutex = xSemaphoreCreateMutex();
+    if (i2cMutex == NULL) {
+        Serial.println("❌ Failed to create I2C mutex!");
+    }
+
+    // Create UI mode mutex
+    uiModeMutex = xSemaphoreCreateMutex();
+    if (uiModeMutex == NULL) {
+        Serial.println("❌ Failed to create UI mode mutex!");
+    }
 
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);
 
     initializeTimeouts();
 
-    initUI();
+    initUI();  // Now uses Serial1 on GPIO14/15
     initSD();
 
     if (!SPIFFS.begin(true)) {
@@ -154,47 +176,86 @@ void setup() {
         if (SPIFFS.exists("/dbc.html")) {
             SPIFFS.remove("/dbc.html");
         }
-        
         if (!SPIFFS.exists("/config")) {
             SPIFFS.mkdir("/config");
         }
-        
         loadConfigFromSPIFFS();
     }
-    
+
     createDBCFileIfNeeded();
     SPIFFS.mkdir("/config");
 
     dataMutex = xSemaphoreCreateMutex();
-
     loadDynamicConfig();
+
+    // ================ CREATE NEW MUTEXES FOR CROSS-CORE DATA PROTECTION ================
+    i2cValuesMutex = xSemaphoreCreateMutex();
+    gpsMutex = xSemaphoreCreateMutex();
 
     influxStatsMutex = xSemaphoreCreateMutex();
     flushSemaphore = xSemaphoreCreateBinary();
 
-    xTaskCreatePinnedToCore(gpsTask, "GPS Task", 4096, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(i2cTask, "I2C Task", 4096, NULL, 1, NULL, 0);
+    // --- Initialise I2C sensors and ADC scheduler ---
+    initI2CSensors();
+    initADS1115Scheduler();
 
+    // --- TORQUE SENSOR (Serial2, 115200, read-only, no DE/RE) ---
+    torqueMutex = xSemaphoreCreateMutex();
+    if (torque_begin() != ESP_OK) {
+        Serial.println("❌ Torque sensor init failed!");
+    } else {
+        Serial.println("✅ Torque sensor ready on Serial2 (pins 25,26)");
+    }
+
+    // --- Initialise GPS and compass ---
+    initGPS();  // Now uses SoftwareSerial on GPIO16, GPIO17
+    initCompass();
+
+    // --- File and session management ---
     if (sdReady) {
         initFileManager();
         initSessionManager();
     }
 
     initWiFi();
+
+    // MQTT task
+    xTaskCreatePinnedToCore(
+        mqttTask,
+        "MQTTTask",
+        8192,
+        NULL,
+        1,
+        NULL,
+        1
+    );
     startWebServer();
 
     initDataLogger();
 
+    // --- Web server task on Core 1 ---
     xTaskCreatePinnedToCore(
-        influxTask,
-        "InfluxTask",
+        webServerTask,
+        "WebServer",
         8192,
         NULL,
         1,
-        &influxTaskHandle,
-        0
+        NULL,
+        1
     );
 
+    // --- UI command task on Core 1 (uses Serial1 now) ---
+    xTaskCreatePinnedToCore(
+        uiTask,
+        "UITask",
+        16384,
+        NULL,
+        1,
+        NULL,
+        1
+    );
+
+    // --- Flush task (SD write) on Core 1 ---
     xTaskCreatePinnedToCore(
         flushTask,
         "FlushTask",
@@ -202,48 +263,35 @@ void setup() {
         NULL,
         1,
         &flushTaskHandle,
-        0
+        1
     );
-    
-    delay(10);
-    Serial2.println(sdReady ? "SD_OK" : "SD_ERROR");
-    delay(10);
-    Serial2.println("WIFI_" + wifiStatus);
-    if (wifiIP.length() > 0) {
-        Serial2.println("IP_" + wifiIP);
-    }
+
     delay(10);
 
     initCAN();
-    initCTSensors(); 
+    initCTSensors();
     initECUState();
     initSpeedSensor();
+    initAuxSpeedSensor();
 
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     setenv("TZ", "IST-5:30", 1);
     tzset();
 }
 
-// ================ MAIN LOOP ================
+// ================ MAIN LOOP – Now only real-time tasks ================
 void loop() {
     unsigned long loopStart = micros();
 
-    unsigned long t1 = micros();
-    handleWebServer();
-    unsigned long t2 = micros();
-    totalWeb += (t2 - t1);
-    countWeb++;
-
     unsigned long now = millis();
 
-    processUICommands();
-
-    t1 = micros();
+    // ---- CAN and ECU processing (Core 0) ----
+    unsigned long t1 = micros();
     processCANMessages();
-    t2 = micros();
+    unsigned long t2 = micros();
     totalCAN += (t2 - t1);
     countCAN++;
-    
+
     if (sessionState == SESSION_STATE_ACTIVE) {
         if (lastFilteredTime != 0 && (millis() - lastFilteredTime) > 30000) {
             Serial.println("No filtered data for 30s, closing file...");
@@ -258,11 +306,14 @@ void loop() {
     totalECU += (t2 - t1);
     countECU++;
     updateSpeed();
+    updateAuxSpeed();
 
-    // ADD THIS LINE - Update CT sensors liveness
+    // Update CT sensors liveness
     updateCTSensors();
 
-    if (loggingActive && sdReady && now - lastLogTime >= logIntervalMs) {
+    // ---- Data logging (add to buffer) ----
+    // Only if UI is NOT active
+    if (!isUIActive() && loggingActive && sdReady && now - lastLogTime >= logIntervalMs) {
         t1 = micros();
         lastLogTime = now;
         logDataToSD();
@@ -271,20 +322,12 @@ void loop() {
         countLog++;
     }
 
-    if (Serial.available()) {
-        String usbCmd = Serial.readStringUntil('\n');
-        usbCmd.trim();
-        if (usbCmd.length() > 0) {
-            Serial.print("\n📤 [Manual] Sending to UI: ");
-            Serial.println(usbCmd);
-            Serial2.println(usbCmd);
-        }
-    }
-
-   if (sdReady && (ESP.getFreeHeap() < 10000 || currentFileSize > (uint64_t)maxFileSizeMB * 1024 * 1024 * 1.2)) {
+    // ---- Emergency checks ----
+    if (sdReady && (ESP.getFreeHeap() < 10000 || currentFileSize > (uint64_t)maxFileSizeMB * 1024 * 1024 * 1.2)) {
         handleEmergencyShutdown();
     }
 
+    // ---- State change detection ----
     if (ecuState != oldEcuState) {
         Serial.printf("ECU state changed: %d -> %d\n", oldEcuState, ecuState);
         oldEcuState = ecuState;
@@ -304,12 +347,13 @@ void loop() {
     delay(1);
 }
 
+// ================ CAN MESSAGE PROCESSING ================
 void processCANMessages() {
     twai_message_t message;
     while (twai_receive(&message, 0) == ESP_OK) {
         messageCount++;
         lastCANActivity = millis();
-        
+
         processCTCANMessage(message);
         if (dynamicMode) {
             auto it = activeSignals.find(message.identifier);
@@ -395,14 +439,19 @@ void handleEmergencyShutdown() {
     }
 }
 
-// ================ FREERTOS TASK FOR INFLUXDB ================
-void influxTask(void *pvParameters) {
-    const TickType_t interval = pdMS_TO_TICKS(100);
-    TickType_t lastWakeTime = xTaskGetTickCount();
-
+// ================ WEB SERVER TASK (Core 1) ================
+void webServerTask(void *pvParameters) {
     while (1) {
-        sendInfluxDBData();
-        vTaskDelayUntil(&lastWakeTime, interval);
+        handleWebServer();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+// ================ UI TASK (Core 1) ================
+void uiTask(void *pvParameters) {
+    while (1) {
+        processUICommands();
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -411,102 +460,7 @@ void flushTask(void *pvParameters) {
     flushBufferTask(pvParameters);
 }
 
-// ================ GPS TASK ================
-void gpsTask(void *pvParameters) {
-    
-    initGPS();
-    initCompass();
-    
-    const TickType_t interval = pdMS_TO_TICKS(100);
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    
-    bool timeSetFromGPS = false;
-    unsigned long lastTimeSyncAttempt = 0;
-    const unsigned long TIME_SYNC_RETRY_INTERVAL = 30000; 
-    unsigned long lastSerialPrint = 0;   
-    unsigned long lastRawPrint = 0;      
-    bool printRawNMEA = false;           
-    
-    while (1) {
-        updateGPS();
-        updateCompass();
-        
-        unsigned long now = millis();
-        
-        if (!timeSetFromGPS && gpsData.time_valid && gpsData.date_valid) {
-            
-            if (gpsData.year >= 2020 && gpsData.year <= 2030) {
-                struct tm tm;
-                tm.tm_year = gpsData.year - 1900;
-                tm.tm_mon = gpsData.month - 1;
-                tm.tm_mday = gpsData.day;
-                tm.tm_hour = gpsData.hour_utc;
-                tm.tm_min = gpsData.minute_utc;
-                tm.tm_sec = gpsData.second_utc;
-                tm.tm_isdst = -1;
-                
-                time_t t = mktime(&tm);
-                if (t > 1609459200) { 
-                    struct timeval tv = { t, 0 };
-                    settimeofday(&tv, NULL);
-                    
-                    Serial.printf("✅ System time set from GPS: %04d-%02d-%02d %02d:%02d:%02d UTC\n",
-                                 gpsData.year, gpsData.month, gpsData.day,
-                                 gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
-                    
-                    setenv("TZ", "IST-5:30", 1);
-                    tzset();
-                    
-                    timeSetFromGPS = true;
-                    Serial2.println("TIME_SYNC_OK");
-                    
-                    time_t now_local = time(nullptr);
-                    struct tm *local = localtime(&now_local);
-                    Serial.printf("Local time (IST): %02d:%02d:%02d\n",
-                                 local->tm_hour, local->tm_min, local->tm_sec);
-                }
-            }
-            lastTimeSyncAttempt = now;
-        }
-        
-        if (!timeSetFromGPS && now - lastTimeSyncAttempt > TIME_SYNC_RETRY_INTERVAL) {
-            if (gpsData.time_valid) {
-                Serial.println("⏳ GPS time available but date invalid?");
-            } else {
-                Serial.println("⏳ Still waiting for GPS time...");
-            }
-            lastTimeSyncAttempt = now;
-        }
-
-        if (printRawNMEA && (now - lastRawPrint > 5000)) {
-            Serial.println("\n--- Raw NMEA Data (last 5 seconds) ---");
-          
-            while (gpsSerial.available()) {
-                char c = gpsSerial.read();
-                Serial.print(c);
-            }
-            Serial.println("\n--- End of NMEA ---\n");
-            lastRawPrint = now;
-        }
-        
-        vTaskDelayUntil(&lastWakeTime, interval);
-    }
-}
-
-// ================ I2C TASK ================
-void i2cTask(void *pvParameters) {
-  
-    initI2CSensors();
-    
-    const TickType_t interval = pdMS_TO_TICKS(I2C_UPDATE_INTERVAL_MS);
-    TickType_t lastWakeTime = xTaskGetTickCount();
-    
-    while (1) {
-        updateI2CSensors();
-        vTaskDelayUntil(&lastWakeTime, interval);
-    }
-}
-
+// ================ STATS TASK (optional) ================
 void statsTask(void *pvParameters) {
     const TickType_t interval = pdMS_TO_TICKS(5000);
     TickType_t lastWakeTime = xTaskGetTickCount();

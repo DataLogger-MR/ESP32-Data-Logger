@@ -6,8 +6,8 @@
 
 // ================ CAN IDs for CT-CAN Sensors ================
 #define CAN_ID_FLOW             0x181    
-#define CAN_ID_PRESSURE         0x182    
-#define CAN_ID_TEMP             0x183    
+#define CAN_ID_PRESSURE         0x1F8    
+#define CAN_ID_TEMP             0x1D2    
 #define CAN_ID_NMT              0x000    
 
 // ================ NMT Commands ================

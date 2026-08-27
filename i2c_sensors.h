@@ -17,6 +17,7 @@
 
 #define ADC_CHANNEL_COUNT 4
 
+
 // ========== I2C Sensor Data Structures ==========
 
 struct DS3231Data {
@@ -82,6 +83,9 @@ void updateRTC();
 void updateThermocouples();
 void updateMCP23017();
 void updateADS1115();   
+// Read a specific pair of thermocouples (pair index 0..5)
+void readThermocouplePair(int pairIndex);
+void populateI2CValues();
 
 #define THERMOCOUPLE_NAMES { \
     "TC1_Battery_Cell1", "TC2_Battery_Cell2", "TC3_Battery_Cell3", "TC4_Battery_Cell4", \

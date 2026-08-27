@@ -12,6 +12,7 @@
 #include "driver/twai.h"
 #include <ArduinoJson.h>
 #include <SPIFFS.h>
+#include "ui_handler.h"
 
 // ================ FILE MANAGER GLOBALS ================
 char currentFilePath[128] = "";
@@ -72,7 +73,6 @@ void initFileManager() {
   createDirectoryRecursive("/system");
   createDirectoryRecursive("/temp");
   createDirectoryRecursive("/config");
-  
 }
 
 void generateFilePath(char* buffer, size_t len, FileType_t fileType, 
@@ -83,7 +83,6 @@ void generateFilePath(char* buffer, size_t len, FileType_t fileType,
   const char* typePrefix = getFileTypePrefix(fileType);
   
   if (timeinfo->tm_year < 100) {
-  
     if (fileType == FILE_TYPE_DATA) {
       snprintf(buffer, len, "/logs/%s_%lu_S%uF%u.csv", 
                typePrefix, millis(), sessionId, fileSeq);
@@ -112,7 +111,7 @@ void generateFilePath(char* buffer, size_t len, FileType_t fileType,
 }
 
 void createNewLogFile() {
-    unsigned long startTime = micros();   
+    unsigned long startTime = micros();
 
     if (!sdReady) return;
 
@@ -121,14 +120,12 @@ void createNewLogFile() {
     
     if (timeinfo->tm_year < 120) {  
         Serial.println("⏳ Time not synchronized yet. Waiting for GPS/NTP time...");
-        Serial2.println("TIME_SYNC_PENDING");
-        
+        sendToUILn("TIME_SYNC_PENDING");
         return;
     }
-    // ==========================================================
 
     if (dynamicMode) {
-        updateDynamicHeader();   
+        updateDynamicHeader();
     }
 
     currentFileSequence++;
@@ -157,7 +154,6 @@ void createNewLogFile() {
             logFile.println(getDynamicHeader().c_str());
         } else {
          logFile.println("Timestamp_ms,SessionRecord,FileRecord,SOC,Voltage_V,Current_A,MaxCellNo,MaxCell_mV,MinCellNo,MinCell_mV,MaxCellTemp,MaxCellTempNo,MinCellTemp,MinCellTempNo,AvgCellTemp,CapRemain_AH,FullCap_AH,CycleCap_AH,CycleCount,BMSRunTime_s,HeatCur_mA,SOH,CDCL_A,CCCL_A,PDCL_A,PCCL_A,ChgMos,DchgMos,Balance,Heater,ChargerPlug,ACC,Cell1_mV,Cell2_mV,Cell3_mV,Cell4_mV,Cell5_mV,Cell6_mV,Cell7_mV,Cell8_mV,Cell9_mV,Cell10_mV,Cell11_mV,Cell12_mV,Cell13_mV,Cell14_mV,Cell15_mV,Cell16_mV,MCU_DC_V,MCU_MotorTemp_C,MCU_CntrlTemp_C,MCU_Throttle,MCU_Speed_RPM,MCU_SpeedLimit_RPM,MCU_SpeedMode,AUX_Torque_Nm,AUX_Speed_RPM,AUX_CtrlTemp_C,AUX_MotorTemp_C,AUX_Cur_A,AUX_Volt_V,AUX_MCU_Volt_V,AUX_CanLife,ChgOut_Volt_V,ChgOut_Cur_A,ChgIn_AC_V,ChgIntTemp_C,Latitude,Longitude,Altitude_m,Speed_kmh,Speed_mps,Speed_knots,Course_deg,CardinalDir,Time_UTC,Date,Time_IST,Satellites,HDOP,Compass_deg,CompassDir,MagX_uT,MagY_uT,MagZ_uT,Uptime_s,MaxSpeed_kmh,TotalDist_km,Speed_Hz,Speed_RPM,Speed_kmh_Hall,Speed_mps_Hall,RTC_Date,RTC_Time,RTC_Temp_C,TC1_Temp_C,TC1_Ambient_C,TC1_Fault,TC2_Temp_C,TC2_Ambient_C,TC2_Fault,TC3_Temp_C,TC3_Ambient_C,TC3_Fault,TC4_Temp_C,TC4_Ambient_C,TC4_Fault,TC5_Temp_C,TC5_Ambient_C,TC5_Fault,TC6_Temp_C,TC6_Ambient_C,TC6_Fault,TC7_Temp_C,TC7_Ambient_C,TC7_Fault,TC8_Temp_C,TC8_Ambient_C,TC8_Fault,TC9_Temp_C,TC9_Ambient_C,TC9_Fault,TC10_Temp_C,TC10_Ambient_C,TC10_Fault,TC11_Temp_C,TC11_Ambient_C,TC11_Fault,TC12_Temp_C,TC12_Ambient_C,TC12_Fault,GPIO_State,GPIO0,GPIO1,GPIO2,GPIO3,GPIO4,GPIO5,GPIO6,GPIO7,GPIO8,GPIO9,GPIO10,GPIO11,GPIO12,GPIO13,GPIO14,GPIO15,ADC0_V,ADC0_Raw,ADC1_V,ADC1_Raw,ADC2_V,ADC2_Raw,ADC3_V,ADC3_Raw");
-       
         }
 
         logFile.close();
@@ -175,14 +171,18 @@ void createNewLogFile() {
         currentSession.fileSize = 0;
         currentSession.cleanClosure = false;
 
-        Serial2.print("NEW_DATA_FILE:");
-        Serial2.printf("S%uF%u:%s\n", currentSessionId, currentFileSequence, currentFilePath);
+        // --- FIX: format the string correctly ---
+        sendToUI("NEW_DATA_FILE:");
+        char buf[128];
+        snprintf(buf, sizeof(buf), "S%uF%u:%s", currentSessionId, currentFileSequence, currentFilePath);
+        sendToUILn(buf);
+        // ------------------------------------------
     } else {
         Serial.println("❌ Failed to create log file!");
     }
 
-    unsigned long duration = micros() - startTime;   
-    if (duration > 100000) {   
+    unsigned long duration = micros() - startTime;
+    if (duration > 100000) {
         Serial.printf("⚠️ createNewLogFile took %lu µs\n", duration);
     }
 }
@@ -217,7 +217,7 @@ bool needsFileRotation() {
 }
 
 void rotateFile(RotateReason_t reason) {
-  unsigned long startTime = micros();   
+  unsigned long startTime = micros();
 
   if (!sdReady) return;
   
@@ -246,8 +246,8 @@ void rotateFile(RotateReason_t reason) {
     createNewLogFile();
   }
 
-  unsigned long duration = micros() - startTime;   
-  if (duration > 200000) {   
+  unsigned long duration = micros() - startTime;
+  if (duration > 200000) {
     Serial.printf("⚠️ rotateFile took %lu µs\n", duration);
   }
 }
@@ -255,17 +255,15 @@ void rotateFile(RotateReason_t reason) {
 void closeCurrentFile(RotateReason_t reason) {
     if (!sdReady) return;
 
-    currentSession.endEpoch = time(nullptr);   
+    currentSession.endEpoch = time(nullptr);
 
     if (!SD.exists(sessionLogPath)) {
         File headerFile = SD.open(sessionLogPath, FILE_WRITE);
         if (headerFile) {
-   
             headerFile.println("SessionID,FileSeq,StartTime,EndTime,FileName,SessionRecords,FileRecords,ECUState,RotateReason,FileSize_Bytes,CleanClosure");
             headerFile.close();
         }
     }
-    // ----------------------------------------------------
 
     currentSession.sessionRecordCount = sessionRecordCounter;
     currentSession.fileRecordCount = fileRecordCounter;
@@ -299,67 +297,81 @@ void closeCurrentFile(RotateReason_t reason) {
                   fileRecordCounter, currentFileSize);
 }
 
+// ==================== RECURSIVE FILE LISTING (FIXED) ====================
+
+static void listFilesRecursive(const char* basePath, const char* prefix, const char* relPath) {
+    File dir = SD.open(basePath);
+    if (!dir) return;
+
+    while (true) {
+        File entry = dir.openNextFile();
+        if (!entry) break;
+
+        if (entry.isDirectory()) {
+            // Build new relative path
+            String subRel = String(relPath);
+            if (subRel.length() > 0) subRel += "/";
+            subRel += entry.name();
+            listFilesRecursive(entry.path(), prefix, subRel.c_str());
+        } else {
+            String name = entry.name();
+            if (name.startsWith(prefix)) {
+                String fullRel = String(relPath);
+                if (fullRel.length() > 0) fullRel += "/";
+                fullRel += name;
+                sendToUI(fullRel.c_str());
+                sendToUI("|");
+                sendToUILn(String(entry.size()).c_str());
+            }
+        }
+        entry.close();
+    }
+    dir.close();
+}
 
 void listFiles() {
-  if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
-    return;
-  }
-  
-  Serial2.println("FILE_LIST_BEGIN");
-  
-  File logsDir = SD.open("/logs");
-  if (logsDir) {
-    listFilesByType(logsDir, "DATA");
-    logsDir.close();
-  }
-  
-  Serial2.println("FILE_LIST_END");
-  Serial.printf("✅ Listed DATA files\n");
+    if (!sdReady) {
+        sendToUILn("ERROR: SD not ready");
+        return;
+    }
+    sendToUILn("FILE_LIST_BEGIN");
+    listFilesRecursive("/logs", "DATA", "");
+    sendToUILn("FILE_LIST_END");
+    Serial.println("✅ Listed DATA files");
 }
 
 void listDiagFiles() {
-  if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
-    return;
-  }
-  
-  Serial2.println("DIAG_LIST_BEGIN");
-  
-  File logsDir = SD.open("/logs");
-  if (logsDir) {
-    listFilesByType(logsDir, "DIAG");
-    logsDir.close();
-  }
-  
-  Serial2.println("DIAG_LIST_END");
-  Serial.printf("✅ Listed DIAG files\n");
+    if (!sdReady) {
+        sendToUILn("ERROR: SD not ready");
+        return;
+    }
+    sendToUILn("DIAG_LIST_BEGIN");
+    listFilesRecursive("/logs", "DIAG", "");
+    sendToUILn("DIAG_LIST_END");
+    Serial.println("✅ Listed DIAG files");
 }
 
+// ==================== LEGACY FUNCTIONS (kept for compatibility) ====================
+
 void listFilesByType(File dir, const char* prefix) {
-  while (true) {
-    File entry = dir.openNextFile();
-    if (!entry) break;
-    
-    if (entry.isDirectory()) {
-      listFilesByType(entry, prefix);
-    } else {
-      String name = entry.name();
-      if (name.startsWith(prefix)) {
-        String fullPath = String(entry.name());
-        int logsIndex = fullPath.indexOf("/logs/");
-        if (logsIndex >= 0) {
-          String relPath = fullPath.substring(logsIndex + 6);
-          Serial2.print(relPath);
+    // Not used anymore – kept only for possible internal use
+    while (true) {
+        File entry = dir.openNextFile();
+        if (!entry) break;
+        if (entry.isDirectory()) {
+            listFilesByType(entry, prefix);
         } else {
-          Serial2.print(name);
+            String name = entry.name();
+            if (name.startsWith(prefix)) {
+                // The old logic tried to extract "/logs/" but entry.name() has no path
+                // We now use the recursive version above.
+                sendToUI(name.c_str());
+                sendToUI("|");
+                sendToUILn(String(entry.size()).c_str());
+            }
         }
-        Serial2.print("|");
-        Serial2.println(entry.size());
-      }
+        entry.close();
     }
-    entry.close();
-  }
 }
 
 String findFileRecursive(const char* basePath, const char* targetFile) {
@@ -499,8 +511,8 @@ void createDisconnectDiagFile(RotateReason_t reason, uint32_t lastRecErr, uint32
     diagFile.close();
     
     Serial.printf("✅ DIAG FILE: %s\n", diagPath);
-    Serial2.print("NEW_DIAG_FILE:");
-    Serial2.println(diagPath);
+    sendToUI("NEW_DIAG_FILE:");
+    sendToUILn(diagPath);
   }
 }
 
@@ -548,38 +560,14 @@ void createRecoveryDiagFile() {
 }
 
 void listDiagFilesRecursive(File dir, int level) {
-  while (true) {
-    File entry = dir.openNextFile();
-    if (!entry) break;
-    
-    if (entry.isDirectory()) {
-      listDiagFilesRecursive(entry, level + 1);
-    } else {
-      String name = entry.name();
-      if (name.startsWith("DIAG_")) {
-        String fullPath = String(entry.name());
-        int logsIndex = fullPath.indexOf("/logs/");
-        if (logsIndex >= 0) {
-          String relPath = fullPath.substring(logsIndex + 6);
-          Serial2.print(relPath);
-        } else {
-          Serial2.print(entry.name());
-        }
-        Serial2.print("|");
-        Serial2.print(entry.size());
-        Serial2.print("|");
-        Serial2.println(entry.getLastWrite());
-      }
-    }
-    entry.close();
-  }
+  // Not used anymore – kept for compatibility
 }
 
 // ================ FILE TRANSFER FUNCTIONS ================
 
 void sendFile(const char* fileName) {
   if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
+    sendToUILn("ERROR: SD not ready");
     return;
   }
   
@@ -594,7 +582,7 @@ void sendFile(const char* fileName) {
   }
   
   if (!SD.exists(fullPath)) {
-    Serial2.println("ERROR: File not found");
+    sendToUILn("ERROR: File not found");
     Serial.printf("File not found: %s\n", fullPath.c_str());
     return;
   }
@@ -622,27 +610,28 @@ void sendFile(const char* fileName) {
 void sendFileNormal(const char* fullPath, const char* displayName) {
   File file = SD.open(fullPath);
   if (!file) {
-    Serial2.println("ERROR: File not found");
+    sendToUILn("ERROR: File not found");
     return;
   }
   
   size_t fileSize = file.size();
   
-  Serial2.print("FILE_BEGIN:");
-  Serial2.print(fileSize);
-  Serial2.print(":");
-  Serial2.println(displayName);
+  sendToUI("FILE_BEGIN:");
+  sendToUI(String(fileSize).c_str());
+  sendToUI(":");
+  sendToUILn(displayName);
   
   uint8_t buffer[2048];
   size_t bytesRead;
   unsigned long startTime = millis();
   
   while ((bytesRead = file.read(buffer, sizeof(buffer))) > 0) {
-    Serial2.write(buffer, bytesRead);
+    Serial1.write(buffer, bytesRead);
+    lastUICommandTime = millis();
   }
   
   file.close();
-  Serial2.println("FILE_END");
+  sendToUILn("FILE_END");
   
   unsigned long elapsed = millis() - startTime;
   float speed = (fileSize / 1024.0) / (elapsed / 1000.0);
@@ -697,12 +686,12 @@ bool sendFileCompressed(const char* fullPath, const char* displayName) {
     float ratio = (100.0 * compressedSize) / fileSize;
     Serial.printf("RLE compressed: %d → %d bytes (%.1f%%)\n", fileSize, compressedSize, ratio);
     
-    Serial2.print("FILE_RLE:");
-    Serial2.print(fileSize);
-    Serial2.print(":");
-    Serial2.print(compressedSize);
-    Serial2.print(":");
-    Serial2.println(displayName);
+    sendToUI("FILE_RLE:");
+    sendToUI(String(fileSize).c_str());
+    sendToUI(":");
+    sendToUI(String(compressedSize).c_str());
+    sendToUI(":");
+    sendToUILn(displayName);
     
     sendDataInChunks(compressedData, compressedSize);
     
@@ -724,12 +713,12 @@ void sendDataInChunks(uint8_t* data, size_t dataSize) {
   
   while (remaining > 0) {
     size_t sendSize = (remaining > chunkSize) ? chunkSize : remaining;
-    Serial2.write(ptr, sendSize);
+    Serial1.write(ptr, sendSize);
     ptr += sendSize;
     remaining -= sendSize;
   }
   
-  Serial2.println("FILE_END");
+  sendToUILn("FILE_END");
   
   unsigned long elapsed = millis() - startTime;
   float speed = (dataSize / 1024.0) / (elapsed / 1000.0);
@@ -774,7 +763,7 @@ size_t simpleRLECompress(const uint8_t* input, size_t inputSize, uint8_t* output
 
 void createTestFile(const char* fileName) {
   if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
+    sendToUILn("ERROR: SD not ready");
     return;
   }
   
@@ -795,7 +784,7 @@ void createTestFile(const char* fileName) {
   
   File testFile = SD.open(fullPath, FILE_WRITE);
   if (!testFile) {
-    Serial2.println("ERROR: Cannot create file");
+    sendToUILn("ERROR: Cannot create file");
     Serial.printf("Failed to create: %s\n", fullPath.c_str());
     return;
   }
@@ -806,13 +795,14 @@ void createTestFile(const char* fileName) {
   }
   
   testFile.close();
-  Serial2.printf("OK: Created %s\n", fullPath.c_str());
+  sendToUI("OK: Created ");
+  sendToUILn(fullPath.c_str());
   Serial.println("✅ Test file created");
 }
 
 void deleteFile(const char* fileName) {
   if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
+    sendToUILn("ERROR: SD not ready");
     return;
   }
   
@@ -827,18 +817,18 @@ void deleteFile(const char* fileName) {
   }
   
   if (SD.remove(fullPath)) {
-    Serial2.print("OK: Deleted ");
-    Serial2.println(fullPath);
+    sendToUI("OK: Deleted ");
+    sendToUILn(fullPath.c_str());
     Serial.println("✅ File deleted");
   } else {
-    Serial2.println("ERROR: Delete failed");
+    sendToUILn("ERROR: Delete failed");
     Serial.printf("Failed to delete: %s\n", fullPath.c_str());
   }
 }
 
 void listLogsByDate(int year, int month, int day) {
   if (!sdReady) {
-    Serial2.println("ERROR: SD not ready");
+    sendToUILn("ERROR: SD not ready");
     return;
   }
   
@@ -846,33 +836,33 @@ void listLogsByDate(int year, int month, int day) {
   snprintf(path, sizeof(path), "/logs/%04d/%02d/%02d", year, month, day);
   
   if (!SD.exists(path)) {
-    Serial2.println("No logs for this date");
+    sendToUILn("No logs for this date");
     return;
   }
   
   File dir = SD.open(path);
   if (!dir) {
-    Serial2.println("ERROR: Cannot open directory");
+    sendToUILn("ERROR: Cannot open directory");
     return;
   }
   
-  Serial2.println("LOG_LIST_BEGIN");
+  sendToUILn("LOG_LIST_BEGIN");
   
   File file = dir.openNextFile();
   while (file) {
     if (!file.isDirectory()) {
-      Serial2.print(file.name());
-      Serial2.print("|");
-      Serial2.print(file.size());
-      Serial2.print("|");
-      Serial2.println(file.getLastWrite());
+      sendToUI(file.name());
+      sendToUI("|");
+      sendToUI(String(file.size()).c_str());
+      sendToUI("|");
+      sendToUILn(String(file.getLastWrite()).c_str());
     }
     file.close();
     file = dir.openNextFile();
   }
   dir.close();
   
-  Serial2.println("LOG_LIST_END");
+  sendToUILn("LOG_LIST_END");
 }
 
 bool saveConfigFile(const char* path, const uint8_t* data, size_t len) {
@@ -974,7 +964,6 @@ void saveConfigToSPIFFS() {
 }
 
 void loadConfigFromSPIFFS() {
-   
     if (!SPIFFS.begin(true)) {
         Serial.println("❌ SPIFFS Mount Failed");
         return;
@@ -1026,5 +1015,4 @@ void loadConfigFromSPIFFS() {
     
     currentGpsBaud = gpsBaudRate;
     currentBufferSize = bufferSize;
-    
 }

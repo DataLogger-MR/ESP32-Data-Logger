@@ -15,6 +15,7 @@
 #include "gps_globals.h"
 #include "i2c_sensors.h"
 #include "i2c_config.h"          
+#include "ui_handler.h"   // Added for sendToUI
 
 // ================ DOUBLE BUFFER GLOBALS ================
 char* buffers[2] = {nullptr, nullptr};
@@ -300,7 +301,7 @@ void formatCompleteCSV(char* buffer, size_t bufferSize,
     } else {
         pos += snprintf(buffer + pos, bufferSize - pos, ",,,,");
     }
-    
+
     // ================ GPS DATA SECTION ================
     
     if (gpsData.location_valid) {
@@ -379,6 +380,15 @@ void formatCompleteCSV(char* buffer, size_t bufferSize,
 // ================ SPEED SENSOR SECTION ================
 
 pos += snprintf(buffer + pos, bufferSize - pos, ",%.0f", speedData.rpm);
+pos += snprintf(buffer + pos, bufferSize - pos, ",%.0f", auxSpeedData.rpm);
+
+// -------------- TORQUE SENSOR -----------------------
+float torque = 0.0f;
+if (xSemaphoreTake(torqueMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+    torque = g_torque.torqueNm;
+    xSemaphoreGive(torqueMutex);
+}
+pos += snprintf(buffer + pos, bufferSize - pos, ",%.3f", torque);
       
 // ================ I2C SENSORS DATA SECTION (static mode) ================
     formatI2CData(buffer + pos, bufferSize - pos, currentTime);
@@ -436,7 +446,7 @@ void resetStatistics() {
     filteredOutCount = 0;
     loggedCount = 0;
     startTime = millis();
-    Serial2.println("STATS_RESET");
+    sendToUILn("STATS_RESET");           // Changed from Serial1 – use UI output
 }
 
 // ================ DYNAMIC MODE FUNCTIONS ================
@@ -530,6 +540,15 @@ void logDynamicDataToSD() {
     }
 
     pos += snprintf(rowBuffer + pos, sizeof(rowBuffer)-pos, ",%.0f", speedData.rpm);
+    pos += snprintf(rowBuffer + pos, sizeof(rowBuffer)-pos, ",%.0f", auxSpeedData.rpm);
+
+        // ---- TORQUE SENSOR ----
+    float torque = 0.0f;
+    if (xSemaphoreTake(torqueMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        torque = g_torque.torqueNm;
+        xSemaphoreGive(torqueMutex);
+    }
+    pos += snprintf(rowBuffer + pos, sizeof(rowBuffer) - pos, ",%.3f", torque);
 
     // ================ CT-CAN SENSORS ================
     if (isCTDataValid(ctFlow.lastUpdate, ctFlow.timeoutMs, now)) {

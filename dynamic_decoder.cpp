@@ -126,7 +126,7 @@ String buildDynamicCSVHeader() {
         }
     }
 
-    header += ",Speed_RPM";
+    header += ",Speed_RPM,AuxSpeed_RPM,Torque_Nm";
     header += ",Flow_LPM,Pressure_Bar,Temp_Celsius";
     header += ",Latitude,Longitude,Altitude_m,Speed_kmh";
     return header;

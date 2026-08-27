@@ -55,6 +55,8 @@ void handleDBCParse();
 void handleDBCSave();
 void handleDBCStatus();
 void handleDBCDelete();
+// Add after existing declarations
+void mqttTask(void *pvParameters);
 
 void handleI2CGetConfig();
 void handleI2CSaveConfig();

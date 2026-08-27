@@ -5,8 +5,8 @@
 #include "types.h"
 #include <set> 
 #include <map>
-
-#include "speed_sensor.h"  
+#include "torque_rs485.h"
+#include "speed_sensor.h"
 
 // ================ GLOBAL VARIABLES DECLARATIONS ================
 extern bool sdReady;
@@ -69,7 +69,7 @@ extern AuxMotor1_t auxMotor1;
 extern AuxMotor2_t auxMotor2;
 extern AuxMotor3_t auxMotor3;
 extern ChrgOut_t chrgOut;
-extern SemaphoreHandle_t dataMutex;   
+extern SemaphoreHandle_t dataMutex;
 extern bool uartDataPresent;
 extern std::set<String> selectedUartSignals;
 
@@ -79,12 +79,19 @@ extern String wifiIP;
 extern bool dynamicMode;
 extern unsigned long lastCANActivity;
 extern unsigned long lastUARTActivity;
-extern bool dataActive;  
+extern bool dataActive;
 
 extern unsigned long filteredMessageCount;
 extern unsigned long lastFilteredTime;
 extern std::map<String, double> i2cValues;
 
+// Torque
+extern TorqueData_t g_torque;
+extern SemaphoreHandle_t torqueMutex;
+
+// ================ NEW MUTEXES FOR CROSS‑CORE DATA PROTECTION ================
+extern SemaphoreHandle_t i2cValuesMutex;
+extern SemaphoreHandle_t gpsMutex;
 
 // ================ RUNTIME CONFIGURATION VARIABLES ================
 extern int logIntervalMs;
@@ -110,5 +117,15 @@ extern String mqttTopic;
 extern String mqttClientId;
 extern String mqttUsername;
 extern String mqttPassword;
+
+// ================ UI MODE STATE ================
+extern bool uiModeActive;                // forced UI mode (true = pause logging/MQTT)
+extern unsigned long lastUICommandTime;  // timestamp of last received character on Serial1
+#define UI_TIMEOUT_MS 120000               // 5 seconds of inactivity to exit UI mode
+extern SemaphoreHandle_t uiModeMutex;    // protect uiModeActive and lastUICommandTime
+
+// ================ UI MODE HELPERS ================
+bool isUIActive();                       // returns true if UI is active (forced or within timeout)
+void setUIMode(bool active);             // force UI mode on/off
 
 #endif

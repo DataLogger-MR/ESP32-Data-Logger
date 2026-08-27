@@ -136,10 +136,10 @@ void initCAN() {
   
   if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK &&
       twai_start() == ESP_OK) {
-    Serial2.println("CAN_OK");
+    Serial1.println("CAN_OK");
   } else {
     Serial.println("❌ CAN initialization FAILED!");
-    Serial2.println("CAN_ERROR");
+    Serial1.println("CAN_ERROR");
   }
 }
 

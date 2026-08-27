@@ -26,15 +26,16 @@ WebServer server(80);
 String wifiStatus = "Disconnected";
 String wifiIP = "";
 
-static File uploadFile;          
-
+static File uploadFile;
 
 // ================ MQTT Client ================
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 bool mqttReady = false;
 unsigned long lastMQTTSend = 0;
-const unsigned long MQTT_INTERVAL = 1000; 
+const unsigned long MQTT_INTERVAL = 1000;
+unsigned long lastMQTTAttempt = 0;
+const unsigned long MQTT_RETRY_INTERVAL = 10000;  // retry every 10s if disconnected
 
 #define DYNAMIC_SIGNAL_TIMEOUT_MS 2000
 
@@ -66,12 +67,11 @@ extern unsigned long loggedCount;
 extern unsigned long startTime;
 extern SessionState_t sessionState;
 
-
 extern bool dynamicMode;
 extern std::map<String, double> lastDynamicValues;
 extern SemaphoreHandle_t dataMutex;
 
-extern I2CSensorData sensorData;  
+extern I2CSensorData sensorData;
 
 void handleDBCUploadFile();
 void handleDBCUpload();
@@ -89,35 +89,46 @@ void handleI2CUploadFile();
 void handleI2CUpload();
 void handleI2CDownloadCSV();
 
-// ================ MQTT Connection ================
+// ================ Non‑blocking MQTT connection ================
 void connectMQTT() {
-    int retries = 0;
+    if (mqttClient.connected()) {
+        mqttReady = true;
+        return;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        mqttReady = false;
+        return;
+    }
+
+    // Only attempt connection every 10 seconds to avoid busy loops
+    unsigned long now = millis();
+    if (now - lastMQTTAttempt < MQTT_RETRY_INTERVAL) {
+        return;
+    }
+    lastMQTTAttempt = now;
+
+    Serial.println("Connecting to MQTT broker (non-blocking)...");
     espClient.setInsecure();
     mqttClient.setClient(espClient);
 
-    while (!mqttClient.connected() && retries < 3) {
-        Serial.print("Connecting to MQTT broker...");
-        if (mqttClient.connect(mqttClientId.c_str(), 
-                               mqttUsername.c_str(), 
-                               mqttPassword.c_str())) {
-            Serial.println("✅ connected");
-            mqttReady = true;
-            return;
-        } else {
-            int state = mqttClient.state();
-            Serial.printf("❌ failed, rc=%d\n", state);
-            retries++;
-            if (retries < 3) {
-                Serial.println("Retrying in 2s...");
-                delay(2000);
-            }
-        }
+    // Set a short timeout for the connection attempt (100 ms)
+    // Note: PubSubClient does not have a direct timeout, but we can use
+    // the underlying WiFiClient timeout. We'll just attempt a single connect.
+    if (mqttClient.connect(mqttClientId.c_str(), 
+                           mqttUsername.c_str(), 
+                           mqttPassword.c_str())) {
+        Serial.println("✅ MQTT connected");
+        mqttReady = true;
+    } else {
+        int state = mqttClient.state();
+        Serial.printf("❌ MQTT connect failed, rc=%d\n", state);
+        mqttReady = false;
+        mqttClient.disconnect();
     }
-    Serial.println("MQTT connection failed after 3 attempts");
-    mqttReady = false;
 }
 
-// ================ Send data via MQTT ================
+// ================ Send data via MQTT (non‑blocking) ================
+// ================ Send data via MQTT (non‑blocking) ================
 void sendMQTTData() {
     unsigned long start = micros();
     unsigned long now = millis();
@@ -146,6 +157,7 @@ void sendMQTTData() {
     };
 
     if (dynamicMode) {
+        // DBC signals (already protected by dataMutex)
         std::map<String, double> localValues;
         std::map<String, unsigned long> localTimes;
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
@@ -154,50 +166,56 @@ void sendMQTTData() {
             xSemaphoreGive(dataMutex);
         }
 
-        unsigned long now = millis();
         for (const auto& pair : localValues) {
             auto itTime = localTimes.find(pair.first);
             bool fresh = (itTime != localTimes.end() && (now - itTime->second) <= DYNAMIC_SIGNAL_TIMEOUT_MS);
-            double val = fresh ? pair.second : 0.0;   
+            double val = fresh ? pair.second : 0.0;
             addField(true, val, pair.first);
         }
 
-        unsigned long i2cAge = now - sensorData.lastScanTime;
-        bool i2cFresh = (i2cAge <= DYNAMIC_SIGNAL_TIMEOUT_MS);
-        for (const auto& pair : i2cValues) {
-            double val = i2cFresh ? pair.second : 0.0;
-            addField(true, val, pair.first);
+        // ---------- I2C values – NO TIMEOUT CHECK ----------
+        if (xSemaphoreTake(i2cValuesMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            for (const auto& pair : i2cValues) {
+                // Publish the value as is – no freshness check
+                addField(true, pair.second, pair.first);
+            }
+            xSemaphoreGive(i2cValuesMutex);
         }
 
-        // ---- GPS data ----
-      if (gpsInitialized) {
-          if (gpsData.location_valid) {
-              addField(true, gpsData.latitude, "G-Lat");
-              addField(true, gpsData.longitude, "G-Long");
-          }
-          if (gpsData.altitude_valid) {
-              addField(true, gpsData.altitude, "G-alt");
-          }
-          if (gpsData.speed_valid) {
-              addField(true, gpsData.speed_kmh, "G-spd");
-          }
-      }
-        
+        // GPS / compass data – protected by gpsMutex
+        if (gpsInitialized) {
+            if (xSemaphoreTake(gpsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                if (gpsData.location_valid) {
+                    addField(true, gpsData.latitude, "G-Lat");
+                    addField(true, gpsData.longitude, "G-Long");
+                }
+                if (gpsData.altitude_valid) addField(true, gpsData.altitude, "G-alt");
+                if (gpsData.speed_valid) addField(true, gpsData.speed_kmh, "G-spd");
+                xSemaphoreGive(gpsMutex);
+            }
+        }
+
         addField(true, speedData.rpm, "speed_rpm");
         
-      // CT-CAN Sensor Data
-      if (isCTDataValid(ctFlow.lastUpdate, ctFlow.timeoutMs, now)) {
-          addField(true, ctFlow.flow_lpm, "flow_lpm");
-      }
-      if (isCTDataValid(ctPressure.lastUpdate, ctPressure.timeoutMs, now)) {
-          addField(true, ctPressure.pressure_bar, "pressure_bar");
-      }
-      if (isCTDataValid(ctTemp.lastUpdate, ctTemp.timeoutMs, now)) {
-          addField(true, ctTemp.temp_celsius, "temp_celsius");
-      }
+        float torque = 0.0f;
+        if (xSemaphoreTake(torqueMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            torque = g_torque.torqueNm;
+            xSemaphoreGive(torqueMutex);
+        }
+        addField(g_torque.valid, torque, "torque_Nm");
 
-        
+        // CT-CAN Sensor Data
+        if (isCTDataValid(ctFlow.lastUpdate, ctFlow.timeoutMs, now)) {
+            addField(true, ctFlow.flow_lpm, "flow_lpm");
+        }
+        if (isCTDataValid(ctPressure.lastUpdate, ctPressure.timeoutMs, now)) {
+            addField(true, ctPressure.pressure_bar, "pressure_bar");
+        }
+        if (isCTDataValid(ctTemp.lastUpdate, ctTemp.timeoutMs, now)) {
+            addField(true, ctTemp.temp_celsius, "temp_celsius");
+        }
     } else {
+        // Static mode fields
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.voltage, "voltage");
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.current, "current");
         addField(isValid(battSt1.lastUpdate, battSt1.timeoutMs, now), battSt1.soc, "soc");
@@ -208,51 +226,46 @@ void sendMQTTData() {
         addField(isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now), cellVolt.maxCellVolt, "max_cell_voltage");
         addField(isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now), cellVolt.minCellVolt, "min_cell_voltage");
 
-        unsigned long i2cAge = now - sensorData.lastScanTime;
-        bool i2cFresh = (i2cAge <= DYNAMIC_SIGNAL_TIMEOUT_MS);
-        for (const auto& pair : i2cValues) {
-            double val = i2cFresh ? pair.second : 0.0;
-            addField(true, val, pair.first);
+        // ---------- I2C values – NO TIMEOUT CHECK (static mode) ----------
+        if (xSemaphoreTake(i2cValuesMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            for (const auto& pair : i2cValues) {
+                addField(true, pair.second, pair.first);
+            }
+            xSemaphoreGive(i2cValuesMutex);
         }
 
+        // GPS – protected
         if (gpsInitialized) {
-            if (gpsData.location_valid) {
-                addField(true, gpsData.latitude, "G-lat");
-                addField(true, gpsData.longitude, "G-long");
+            if (xSemaphoreTake(gpsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                if (gpsData.location_valid) {
+                    addField(true, gpsData.latitude, "G-lat");
+                    addField(true, gpsData.longitude, "G-long");
+                }
+                if (gpsData.altitude_valid) addField(true, gpsData.altitude, "G-alt");
+                if (gpsData.speed_valid) {
+                    addField(true, gpsData.speed_kmh, "gps_speed_kmh");
+                    addField(true, gpsData.speed_mps, "gps_speed_mps");
+                    addField(true, gpsData.speed_knots, "gps_speed_knots");
+                }
+                if (gpsData.course_valid) addField(true, gpsData.course_deg, "gps_course");
+                if (gpsData.time_valid) {
+                    float utc_seconds = gpsData.hour_utc * 3600 + gpsData.minute_utc * 60 + gpsData.second_utc;
+                    addField(true, utc_seconds, "gps_utc_seconds");
+                    addField(true, gpsData.hour_utc, "gps_hour_utc");
+                    addField(true, gpsData.minute_utc, "gps_minute_utc");
+                    addField(true, gpsData.second_utc, "gps_second_utc");
+                }
+                if (gpsData.date_valid) {
+                    float date_numeric = gpsData.year * 10000 + gpsData.month * 100 + gpsData.day;
+                    addField(true, date_numeric, "gps_date");
+                }
+                if (gpsData.satellites_valid) addField(true, gpsData.satellites, "gps_satellites");
+                if (gpsData.hdop_valid) addField(true, gpsData.hdop, "gps_hdop");
+                if (compassData.valid) addField(true, compassData.heading_deg, "compass_heading");
+                addField(true, gpsStats.maxSpeed_kmh, "gps_max_speed");
+                addField(true, gpsStats.totalDistance_km, "gps_total_distance");
+                xSemaphoreGive(gpsMutex);
             }
-            if (gpsData.altitude_valid) {
-                addField(true, gpsData.altitude, "G-alt");
-            }
-            if (gpsData.speed_valid) {
-                addField(true, gpsData.speed_kmh, "gps_speed_kmh");
-                addField(true, gpsData.speed_mps, "gps_speed_mps");
-                addField(true, gpsData.speed_knots, "gps_speed_knots");
-            }
-            if (gpsData.course_valid) {
-                addField(true, gpsData.course_deg, "gps_course");
-            }
-            if (gpsData.time_valid) {
-                float utc_seconds = gpsData.hour_utc * 3600 + gpsData.minute_utc * 60 + gpsData.second_utc;
-                addField(true, utc_seconds, "gps_utc_seconds");
-                addField(true, gpsData.hour_utc, "gps_hour_utc");
-                addField(true, gpsData.minute_utc, "gps_minute_utc");
-                addField(true, gpsData.second_utc, "gps_second_utc");
-            }
-            if (gpsData.date_valid) {
-                float date_numeric = gpsData.year * 10000 + gpsData.month * 100 + gpsData.day;
-                addField(true, date_numeric, "gps_date");
-            }
-            if (gpsData.satellites_valid) {
-                addField(true, gpsData.satellites, "gps_satellites");
-            }
-            if (gpsData.hdop_valid) {
-                addField(true, gpsData.hdop, "gps_hdop");
-            }
-            if (compassData.valid) {
-                addField(true, compassData.heading_deg, "compass_heading");
-            }
-            addField(true, gpsStats.maxSpeed_kmh, "gps_max_speed");
-            addField(true, gpsStats.totalDistance_km, "gps_total_distance");
         }
     }
 
@@ -277,8 +290,8 @@ void sendMQTTData() {
     }
 
     unsigned long duration = micros() - start;
-    if (duration > 500000) {
-        Serial.printf("⚠️ Long MQTT send: %lu µs\n", duration);
+    if (duration > 20000) {
+        Serial.printf("⚠️ MQTT send took %lu µs\n", duration);
     }
 
     if (xSemaphoreTake(influxStatsMutex, portMAX_DELAY) == pdTRUE) {
@@ -286,10 +299,6 @@ void sendMQTTData() {
         influxCount++;
         xSemaphoreGive(influxStatsMutex);
     }
-}
-
-void sendInfluxDBData() {
-    sendMQTTData();
 }
 
 // ================ Wi‑Fi station connection ================
@@ -331,9 +340,8 @@ void initWiFi() {
     mqttClient.setKeepAlive(60);
     mqttClient.setBufferSize(2048);
 
-    if (WiFi.status() == WL_CONNECTED) {
-        connectMQTT();
-    }
+    // Initial connection attempt (non-blocking)
+    connectMQTT();
 }
 
 // ================ Web server setup ================
@@ -411,11 +419,10 @@ void handleDBCUploadFile() {
 }
 
 void handleDBCUpload() {
-   
+    // empty
 }
 
 void handleDBCParse() {
-    
     if (ESP.getFreeHeap() < 60000) {
         server.send(503, "text/plain", "Insufficient memory – try again later");
         return;
@@ -512,12 +519,12 @@ void handleDBCDelete() {
     SPIFFS.remove("/dbc/upload.dbc");
     SPIFFS.remove("/dbc/messages.json");
     SPIFFS.remove(SIGNAL_CONFIG_PATH);
-    setActiveSignals({});  
+    setActiveSignals({});
     setDynamicMode(false);
     server.send(200, "text/plain", "Deleted");
 }
 
-// ========== I2C Config Handlers (JSON) ==========
+// ========== I2C Config Handlers ==========
 void handleI2CGetConfig() {
     DynamicJsonDocument doc(8192);
     JsonArray devices = doc.createNestedArray("devices");
@@ -596,7 +603,6 @@ void handleI2CSaveConfig() {
     }
 
     if (saveI2CConfig(newConfig)) {
-        
         i2cConfig = newConfig;
         server.send(200, "text/plain", "OK");
     } else {
@@ -605,7 +611,6 @@ void handleI2CSaveConfig() {
 }
 
 void handleI2CConfigPage() {
-    
     if (!SPIFFS.exists("/i2c_config.html")) {
         createI2CConfigHTML();
     }
@@ -868,7 +873,7 @@ void createI2CConfigHTML() {
     f.close();
 }
 
-// ========== NEW: I2C CSV Upload/Download ==========
+// ========== I2C CSV Upload/Download ==========
 static File i2cUploadFile;
 
 void handleI2CUploadFile() {
@@ -911,7 +916,7 @@ void handleI2CUploadFile() {
 }
 
 void handleI2CUpload() {
-    
+    // empty
 }
 
 void handleI2CDownloadCSV() {
@@ -1097,6 +1102,17 @@ void createDBCFileIfNeeded() {
 </html>
 )rawliteral");
         f.close();
-        
+    }
+}
+
+void mqttTask(void *pvParameters) {
+    const TickType_t interval = pdMS_TO_TICKS(1000);
+    TickType_t lastWakeTime = xTaskGetTickCount();
+
+    while (1) {
+        vTaskDelayUntil(&lastWakeTime, interval);
+        if (!isUIActive()) {   // skip MQTT when UI is active
+            sendMQTTData();
+        }
     }
 }

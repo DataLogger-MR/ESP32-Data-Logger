@@ -14,6 +14,10 @@
 char uiCommandBuffer[128];
 int uiCommandIndex = 0;
 
+// ================ Mutex for Serial1 ================
+SemaphoreHandle_t serial1Mutex = NULL;
+
+// ================ Extern declarations ================
 extern bool loggingActive;
 extern unsigned long lastStatsTime;
 extern SessionState_t sessionState;
@@ -44,7 +48,7 @@ extern String wifiSSID;
 extern String wifiPassword;
 extern int bufferSize;
 extern int ecuTimeout;
-extern void saveConfigToSPIFFS();  
+extern void saveConfigToSPIFFS();
 
 extern void deleteFile(const char* fileName);
 extern void createTestFile(const char* fileName);
@@ -57,40 +61,81 @@ extern void listDiagFiles();
 extern void createDisconnectDiagFile(RotateReason_t reason, uint32_t lastRecErr, uint32_t lastTecErr);
 
 void initUI() {
-  Serial2.begin(921600, SERIAL_8N1, UI_RXD2, UI_TXD2);
-  while(Serial2.available()) Serial2.read();
-  
-  sendToUILn("BMS_LOGGER_READY");
-  delay(10);
-  sendToUILn(sdReady ? "SD_OK" : "SD_ERROR");
-  delay(10);
+    if (serial1Mutex == NULL) {
+        serial1Mutex = xSemaphoreCreateMutex();
+    }
+
+    Serial1.begin(921600, SERIAL_8N1, UI_RX_PIN, UI_TX_PIN);
+    while (Serial1.available()) Serial1.read();
+
+    sendToUILn("BMS_LOGGER_READY");
+    delay(10);
+    sendToUILn(sdReady ? "SD_OK" : "SD_ERROR");
+    delay(10);
 }
 
-void processUICommands() {
-  if (!Serial2.available()) return;
-  
-  char c = Serial2.read();
-  Serial.print(c);
-  
-  if (c == '\n') {
-    if (uiCommandIndex > 0) {
-      uiCommandBuffer[uiCommandIndex] = '\0';
-      Serial.println();
-      processUICommand(uiCommandBuffer);
-      uiCommandIndex = 0;
+// ================ Protected Serial1 writes ================
+
+void sendToUI(const char* message) {
+    if (serial1Mutex == NULL) return;
+    if (xSemaphoreTake(serial1Mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Serial1.print(message);
+        xSemaphoreGive(serial1Mutex);
     }
-  } else if (c != '\r' && uiCommandIndex < sizeof(uiCommandBuffer) - 1) {
-    uiCommandBuffer[uiCommandIndex++] = c;
-  }
+}
+
+void sendToUILn(const char* message) {
+    if (serial1Mutex == NULL) return;
+    if (xSemaphoreTake(serial1Mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Serial1.println(message);
+        xSemaphoreGive(serial1Mutex);
+    }
+}
+
+void sendToUIBinary(const uint8_t* data, size_t len) {
+    if (serial1Mutex == NULL) return;
+    if (xSemaphoreTake(serial1Mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Serial1.write(data, len);
+        xSemaphoreGive(serial1Mutex);
+    }
+}
+
+// ================ Command processing ================
+
+void processUICommands() {
+    if (!Serial1.available()) return;
+
+    char c = Serial1.read();
+    Serial.print(c);
+
+    // Remove the immediate update of lastUICommandTime here
+
+    if (c == '\n') {
+        if (uiCommandIndex > 0) {
+            uiCommandBuffer[uiCommandIndex] = '\0';
+            Serial.println();
+
+            // Only update the UI timer when a non‑empty command is processed
+            lastUICommandTime = millis();
+
+            processUICommand(uiCommandBuffer);
+            uiCommandIndex = 0;
+        } else {
+            // Empty command – ignore and do not start the timer
+            uiCommandIndex = 0;
+        }
+    } else if (c != '\r' && uiCommandIndex < sizeof(uiCommandBuffer) - 1) {
+        uiCommandBuffer[uiCommandIndex++] = c;
+    }
 }
 
 void processConfigCommand(String cmd) {
     cmd.trim();
     bool configChanged = false;
-    
+
     Serial.print("Processing config command: ");
     Serial.println(cmd);
-    
+
     // ================ LOGGING SETTINGS ================
     if (cmd.startsWith("config logging interval")) {
         int interval = cmd.substring(cmd.lastIndexOf(' ')).toInt();
@@ -135,26 +180,26 @@ void processConfigCommand(String cmd) {
     }
     else if (cmd.startsWith("config logging includedate")) {
         int includeDate = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-        
+
         Serial.printf("Include date in filename: %s (requires restart)\n", includeDate ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Include date change requires restart");
         configChanged = true;
     }
     else if (cmd.startsWith("config logging printcanmsgs")) {
         int printMsgs = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-        
+
         Serial.printf("Print CAN messages: %s (requires recompile)\n", printMsgs ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Print CAN messages requires recompile");
         configChanged = true;
     }
     else if (cmd.startsWith("config logging printlogged")) {
         int printLogged = cmd.substring(cmd.lastIndexOf(' ')).toInt();
-  
+
         Serial.printf("Print logged data: %s (requires recompile)\n", printLogged ? "ENABLED" : "DISABLED");
         sendToUILn("CONFIG_WARNING: Print logged data requires recompile");
         configChanged = true;
     }
-    
+
     // ================ CAN BUS SETTINGS ================
     else if (cmd.startsWith("config can filtermode")) {
         int mode = cmd.substring(cmd.lastIndexOf(' ')).toInt();
@@ -163,7 +208,7 @@ void processConfigCommand(String cmd) {
         configChanged = true;
     }
     else if (cmd.startsWith("config can baud")) {
-        int baud = cmd.substring(cmd.lastIndexOf(' ')).toInt();
+        int baud = cmd.substring(cmd.lastIndexOf(' ') + 1).toInt();
         canBaudRate = baud;
         Serial.printf("CAN baud rate changed to %d kbps (requires restart)\n", baud);
         sendToUILn("CONFIG_WARNING: CAN baud change requires restart");
@@ -176,7 +221,7 @@ void processConfigCommand(String cmd) {
         sendToUILn("CONFIG_WARNING: CAN queue size change requires restart");
         configChanged = true;
     }
-    
+
     // ================ WIFI SETTINGS ================
     else if (cmd.startsWith("config wifi ssid")) {
         String ssid = cmd.substring(cmd.indexOf(' ', 15) + 1);
@@ -196,7 +241,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config wifi password")) {
         String password = cmd.substring(cmd.indexOf(' ', 15) + 1);
         password.trim();
-      
+
         if (password.startsWith("\"") && password.endsWith("\"")) {
             password = password.substring(1, password.length() - 1);
         }
@@ -210,7 +255,7 @@ void processConfigCommand(String cmd) {
         }
     }
     else if (cmd.startsWith("config wifi apssid")) {
-      
+
         String apSsid = cmd.substring(cmd.indexOf(' ', 15) + 1);
         apSsid.trim();
         Serial.printf("AP SSID would be set to %s (requires recompile)\n", apSsid.c_str());
@@ -218,14 +263,14 @@ void processConfigCommand(String cmd) {
         configChanged = true;
     }
     else if (cmd.startsWith("config wifi appassword")) {
-      
+
         String apPassword = cmd.substring(cmd.indexOf(' ', 15) + 1);
         apPassword.trim();
         Serial.printf("AP Password would be set (requires recompile)\n");
         sendToUILn("CONFIG_WARNING: AP Password change requires recompile");
         configChanged = true;
     }
-    
+
     // ================ GPS SETTINGS ================
     else if (cmd.startsWith("config gps baud")) {
         int baud = cmd.substring(cmd.lastIndexOf(' ')).toInt();
@@ -249,7 +294,7 @@ void processConfigCommand(String cmd) {
             sendToUILn("CONFIG_ERROR: Invalid interval (100-10000)");
         }
     }
-    
+
     // ================ MQTT SETTINGS ================
     else if (cmd.startsWith("config mqtt broker")) {
         String broker = cmd.substring(cmd.indexOf(' ', 15) + 1);
@@ -275,7 +320,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt topic")) {
         String topic = cmd.substring(cmd.indexOf(' ', 15) + 1);
         topic.trim();
-        
+
         if (topic.startsWith("\"") && topic.endsWith("\"")) {
             topic = topic.substring(1, topic.length() - 1);
         }
@@ -286,7 +331,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt clientid")) {
         String clientId = cmd.substring(cmd.indexOf(' ', 15) + 1);
         clientId.trim();
-    
+
         if (clientId.startsWith("\"") && clientId.endsWith("\"")) {
             clientId = clientId.substring(1, clientId.length() - 1);
         }
@@ -297,7 +342,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt username")) {
         String username = cmd.substring(cmd.indexOf(' ', 15) + 1);
         username.trim();
-        
+
         if (username.startsWith("\"") && username.endsWith("\"")) {
             username = username.substring(1, username.length() - 1);
         }
@@ -308,7 +353,7 @@ void processConfigCommand(String cmd) {
     else if (cmd.startsWith("config mqtt password")) {
         String password = cmd.substring(cmd.indexOf(' ', 15) + 1);
         password.trim();
-      
+
         if (password.startsWith("\"") && password.endsWith("\"")) {
             password = password.substring(1, password.length() - 1);
         }
@@ -316,7 +361,7 @@ void processConfigCommand(String cmd) {
         sendToUILn("CONFIG_WARNING: MQTT password change requires restart");
         configChanged = true;
     }
-    
+
     // ================ SYSTEM SETTINGS ================
     else if (cmd.startsWith("config system debug")) {
         int debug = cmd.substring(cmd.lastIndexOf(' ')).toInt();
@@ -363,16 +408,15 @@ void processConfigCommand(String cmd) {
         configChanged = true;
     }
     else {
-     
         Serial.printf("Unknown config command: %s\n", cmd.c_str());
         sendToUILn("CONFIG_ERROR: Unknown configuration command");
         return;
     }
-    
+
     if (configChanged) {
         saveConfigToSPIFFS();
         sendToUILn("CONFIG_SAVED_TO_SPIFFS");
-        
+
         Serial.println("\n=== CONFIGURATION SAVED ===");
         Serial.printf("logIntervalMs: %d\n", logIntervalMs);
         Serial.printf("maxFileSizeMB: %d\n", maxFileSizeMB);
@@ -388,389 +432,391 @@ void processConfigCommand(String cmd) {
     }
 }
 
-
 void processUICommand(char* cmd) {
-  Serial.print("⚙️ UI Command: \"");
-  Serial.print(cmd);
-  Serial.println("\"");
-  
-  if (strchr(cmd, '\n') != NULL) {
-    char* line = strtok(cmd, "\n");
-    while (line != NULL) {
-     
-      while (*line == ' ') line++;
-      if (strlen(line) > 0) {
-        Serial.printf("Processing batch command: %s\n", line);
-        processUICommand(line);
-      }
-      line = strtok(NULL, "\n");
-    }
-    return;
-  }
-  
-  while (*cmd == ' ') cmd++;
-  
-  if (strncmp(cmd, "config", 6) == 0) {
-    processConfigCommand(String(cmd));
-    return;
-  }
-  
-  char* space = strchr(cmd, ' ');
-  
-  if (space != NULL) {
-    *space = '\0';
-    char* param = space + 1;
-    while (*param == ' ') param++;
-    
-    if (strcmp(cmd, "read") == 0 || strcmp(cmd, "send") == 0) {
-      sendFile(param);
-    } else if (strcmp(cmd, "delete") == 0) {
-      deleteFile(param);
-    } else if (strcmp(cmd, "create") == 0) {
-      createTestFile(param);
-    } else if (strcmp(cmd, "loglist") == 0) {
-      handleFileManagementCommands(cmd, param);
-    } else if (strcmp(cmd, "send") == 0) {
-      sendFile(param);
-    } else {
-      sendToUILn("ERROR: Unknown command");
-    }
-  } else {
-    
-    if (strcmp(cmd, "list") == 0) {
-      listFiles();
-    } else if (strcmp(cmd, "listdiag") == 0) {
-      listDiagFiles();
-    } else if (strcmp(cmd, "sessions") == 0) {           
-      sendSessionHistory();
-    } else if (strcmp(cmd, "info") == 0) {
-      sendCardInfo();
-    } else if (strcmp(cmd, "status") == 0) {
-      sendStatus();
-    } else if (strcmp(cmd, "live") == 0) {
-      sendLiveData();
-    } else if (strcmp(cmd, "stats") == 0) {
-      sendStats();
-    } else if (strcmp(cmd, "logstart") == 0) {
-      loggingActive = true;
-      if (sessionState == SESSION_STATE_WAITING) {
-        sessionState = SESSION_STATE_ACTIVE;
-      }
-      sendToUILn("LOGGING_STARTED");
-    } else if (strcmp(cmd, "logstop") == 0) {
-      loggingActive = false;
-      sessionState = SESSION_STATE_WAITING;
-      sendToUILn("LOGGING_STOPPED");
-    } else if (strcmp(cmd, "reset") == 0) {
-      resetStatistics();
-    } else if (strcmp(cmd, "help") == 0) {
-      sendHelp();
-    } else if (strcmp(cmd, "logstatus") == 0 || 
-               strcmp(cmd, "logrotate") == 0 ||
-               strcmp(cmd, "logsummary") == 0) {
-      handleFileManagementCommands(cmd, NULL);
-    } else if (strcmp(cmd, "creatediag") == 0) {
-      handleDiagCommands(cmd, NULL);
-    } else if (strcmp(cmd, "gpsinfo") == 0) {
-      sendGPSInfo();
-    } else if (strcmp(cmd, "showconfig") == 0) {
-      // Show current configuration
-      sendToUILn("CURRENT_CONFIG_BEGIN");
-      sendToUI("log_interval_ms: "); sendToUILn(String(logIntervalMs).c_str());
-      sendToUI("max_file_size_mb: "); sendToUILn(String(maxFileSizeMB).c_str());
-      sendToUI("rotate_hourly: "); sendToUILn(rotateHourlyEnabled ? "1" : "0");
-      sendToUI("auto_delete_days: "); sendToUILn(String(autoDeleteDays).c_str());
-      sendToUI("gps_baud_rate: "); sendToUILn(String(gpsBaudRate).c_str());
-      sendToUI("gps_update_interval: "); sendToUILn(String(gpsUpdateInterval).c_str());
-      sendToUI("wifi_ssid: "); sendToUILn(wifiSSID.c_str());
-      sendToUI("wifi_password: "); sendToUILn(wifiPassword.c_str());
-      sendToUI("buffer_size: "); sendToUILn(String(bufferSize).c_str());
-      sendToUI("ecu_timeout: "); sendToUILn(String(ecuTimeout).c_str());
-      sendToUILn("CURRENT_CONFIG_END");
-    } else if (strcmp(cmd, "saveconfig") == 0) {
-      saveConfigToSPIFFS();
-      sendToUILn("CONFIG_FORCE_SAVED");
-    } else if (strcmp(cmd, "testconfig") == 0) {
-      logIntervalMs = 50;
-      maxFileSizeMB = 50;
-      rotateHourlyEnabled = true;
-      autoDeleteDays = 15;
-      gpsBaudRate = 9600;
-      gpsUpdateInterval = 200;
-      wifiSSID = "Test_Network";
-      wifiPassword = "test123";
-      bufferSize = 8192;
-      ecuTimeout = 15000;
-      saveConfigToSPIFFS();
-      sendToUILn("TEST_CONFIG_SAVED");
-      sendToUILn("Please reboot to verify persistence");
-    } else if (strcmp(cmd, "ping") == 0) {
-      sendToUILn("pong");
-    } else if (strcmp(cmd, "listspiffs") == 0) {
-      if (!SPIFFS.begin(true)) {
-        sendToUILn("SPIFFS_ERROR: Failed to mount");
-        return;
-      }
-      sendToUILn("SPIFFS_LIST_BEGIN");
-      File root = SPIFFS.open("/");
-      if (root) {
-        File file = root.openNextFile();
-        while (file) {
-          sendToUI(file.name());
-          sendToUI(" (");
-          sendToUI(String(file.size()).c_str());
-          sendToUILn(" bytes)");
-          file = root.openNextFile();
+    Serial.print("⚙️ UI Command: \"");
+    Serial.print(cmd);
+    Serial.println("\"");
+
+    if (strchr(cmd, '\n') != NULL) {
+        char* line = strtok(cmd, "\n");
+        while (line != NULL) {
+            while (*line == ' ') line++;
+            if (strlen(line) > 0) {
+                Serial.printf("Processing batch command: %s\n", line);
+                processUICommand(line);
+            }
+            line = strtok(NULL, "\n");
         }
-        root.close();
-      } else {
-        sendToUILn("SPIFFS_ERROR: Cannot open root");
-      }
-      sendToUILn("SPIFFS_LIST_END");
-    } else {
-      sendToUI("UNKNOWN: ");
-      sendToUILn(cmd);
+        return;
     }
-  }
+
+    while (*cmd == ' ') cmd++;
+
+    // --- UI mode commands ---
+    if (strcmp(cmd, "ui on") == 0) {
+        setUIMode(true);
+        sendToUILn("UI_MODE_ON");
+        return;
+    }
+    if (strcmp(cmd, "ui off") == 0) {
+        setUIMode(false);
+        sendToUILn("UI_MODE_OFF");
+        return;
+    }
+
+    if (strncmp(cmd, "config", 6) == 0) {
+        processConfigCommand(String(cmd));
+        return;
+    }
+
+    char* space = strchr(cmd, ' ');
+    if (space != NULL) {
+        *space = '\0';
+        char* param = space + 1;
+        while (*param == ' ') param++;
+
+        if (strcmp(cmd, "read") == 0 || strcmp(cmd, "send") == 0) {
+            sendFile(param);
+        } else if (strcmp(cmd, "delete") == 0) {
+            deleteFile(param);
+        } else if (strcmp(cmd, "create") == 0) {
+            createTestFile(param);
+        } else if (strcmp(cmd, "loglist") == 0) {
+            handleFileManagementCommands(cmd, param);
+        } else {
+            sendToUILn("ERROR: Unknown command");
+        }
+    } else {
+        if (strcmp(cmd, "list") == 0) {
+            listFiles();
+        } else if (strcmp(cmd, "listdiag") == 0) {
+            listDiagFiles();
+        } else if (strcmp(cmd, "sessions") == 0) {
+            sendSessionHistory();
+        } else if (strcmp(cmd, "info") == 0) {
+            sendCardInfo();
+        } else if (strcmp(cmd, "status") == 0) {
+            sendStatus();
+        } else if (strcmp(cmd, "live") == 0) {
+            sendLiveData();
+        } else if (strcmp(cmd, "stats") == 0) {
+            sendStats();
+        } else if (strcmp(cmd, "logstart") == 0) {
+            loggingActive = true;
+            if (sessionState == SESSION_STATE_WAITING) {
+                sessionState = SESSION_STATE_ACTIVE;
+            }
+            sendToUILn("LOGGING_STARTED");
+        } else if (strcmp(cmd, "logstop") == 0) {
+            loggingActive = false;
+            sessionState = SESSION_STATE_WAITING;
+            sendToUILn("LOGGING_STOPPED");
+        } else if (strcmp(cmd, "reset") == 0) {
+            resetStatistics();
+        } else if (strcmp(cmd, "help") == 0) {
+            sendHelp();
+        } else if (strcmp(cmd, "logstatus") == 0 ||
+                   strcmp(cmd, "logrotate") == 0 ||
+                   strcmp(cmd, "logsummary") == 0) {
+            handleFileManagementCommands(cmd, NULL);
+        } else if (strcmp(cmd, "creatediag") == 0) {
+            handleDiagCommands(cmd, NULL);
+        } else if (strcmp(cmd, "gpsinfo") == 0) {
+            sendGPSInfo();
+        } else if (strcmp(cmd, "showconfig") == 0) {
+            sendToUILn("CURRENT_CONFIG_BEGIN");
+            sendToUI("log_interval_ms: "); sendToUILn(String(logIntervalMs).c_str());
+            sendToUI("max_file_size_mb: "); sendToUILn(String(maxFileSizeMB).c_str());
+            sendToUI("rotate_hourly: "); sendToUILn(rotateHourlyEnabled ? "1" : "0");
+            sendToUI("auto_delete_days: "); sendToUILn(String(autoDeleteDays).c_str());
+            sendToUI("gps_baud_rate: "); sendToUILn(String(gpsBaudRate).c_str());
+            sendToUI("gps_update_interval: "); sendToUILn(String(gpsUpdateInterval).c_str());
+            sendToUI("wifi_ssid: "); sendToUILn(wifiSSID.c_str());
+            sendToUI("wifi_password: "); sendToUILn(wifiPassword.c_str());
+            sendToUI("buffer_size: "); sendToUILn(String(bufferSize).c_str());
+            sendToUI("ecu_timeout: "); sendToUILn(String(ecuTimeout).c_str());
+            sendToUILn("CURRENT_CONFIG_END");
+        } else if (strcmp(cmd, "saveconfig") == 0) {
+            saveConfigToSPIFFS();
+            sendToUILn("CONFIG_FORCE_SAVED");
+        } else if (strcmp(cmd, "testconfig") == 0) {
+            logIntervalMs = 50;
+            maxFileSizeMB = 50;
+            rotateHourlyEnabled = true;
+            autoDeleteDays = 15;
+            gpsBaudRate = 9600;
+            gpsUpdateInterval = 200;
+            wifiSSID = "Test_Network";
+            wifiPassword = "test123";
+            bufferSize = 8192;
+            ecuTimeout = 15000;
+            saveConfigToSPIFFS();
+            sendToUILn("TEST_CONFIG_SAVED");
+            sendToUILn("Please reboot to verify persistence");
+        } else if (strcmp(cmd, "ping") == 0) {
+            sendToUILn("pong");
+        } else if (strcmp(cmd, "listspiffs") == 0) {
+            if (!SPIFFS.begin(true)) {
+                sendToUILn("SPIFFS_ERROR: Failed to mount");
+                return;
+            }
+            sendToUILn("SPIFFS_LIST_BEGIN");
+            File root = SPIFFS.open("/");
+            if (root) {
+                File file = root.openNextFile();
+                while (file) {
+                    sendToUI(file.name());
+                    sendToUI(" (");
+                    sendToUI(String(file.size()).c_str());
+                    sendToUILn(" bytes)");
+                    file = root.openNextFile();
+                }
+                root.close();
+            } else {
+                sendToUILn("SPIFFS_ERROR: Cannot open root");
+            }
+            sendToUILn("SPIFFS_LIST_END");
+        } else {
+            sendToUI("UNKNOWN: ");
+            sendToUILn(cmd);
+        }
+    }
 }
 
-void sendToUI(const char* message) {
-  Serial2.print(message);
-}
-
-void sendToUILn(const char* message) {
-  Serial2.println(message);
-}
+// ================ Command handlers (unchanged) ================
 
 void handleFileManagementCommands(char* cmd, char* param) {
-  if (strcmp(cmd, "logstatus") == 0) {
-    sendToUILn("LOG_STATUS_BEGIN");
-    sendToUI("Current file: "); sendToUILn(currentFilePath);
-    sendToUI("File size: "); sendToUI(String(currentFileSize).c_str()); sendToUILn(" bytes");
-    sendToUI("Session ID: "); sendToUILn(String(currentSessionId).c_str());
-    sendToUI("File sequence: "); sendToUILn(String(currentFileSequence).c_str());
-    sendToUI("Session records: "); sendToUILn(String(sessionRecordCounter).c_str());
-    sendToUI("File records: "); sendToUILn(String(fileRecordCounter).c_str());
-    sendToUI("ECU State: "); sendToUILn(String(ecuState).c_str());
-    sendToUI("Session State: "); sendToUILn(String(sessionState).c_str());
-    sendToUILn("LOG_STATUS_END");
-  }
-  else if (strcmp(cmd, "logrotate") == 0) {
-    rotateFile(ROTATE_REASON_USER_COMMAND);
-    sendToUILn("Log rotated");
-  }
-  else if (strcmp(cmd, "loglist") == 0) {
-    if (param) {
-      int year, month, day;
-      if (sscanf(param, "%d-%d-%d", &year, &month, &day) == 3) {
-        listLogsByDate(year, month, day);
-      } else {
-        sendToUILn("Usage: loglist YYYY-MM-DD");
-      }
-    } else {
-      sendToUILn("Usage: loglist YYYY-MM-DD");
+    if (strcmp(cmd, "logstatus") == 0) {
+        sendToUILn("LOG_STATUS_BEGIN");
+        sendToUI("Current file: "); sendToUILn(currentFilePath);
+        sendToUI("File size: "); sendToUI(String(currentFileSize).c_str()); sendToUILn(" bytes");
+        sendToUI("Session ID: "); sendToUILn(String(currentSessionId).c_str());
+        sendToUI("File sequence: "); sendToUILn(String(currentFileSequence).c_str());
+        sendToUI("Session records: "); sendToUILn(String(sessionRecordCounter).c_str());
+        sendToUI("File records: "); sendToUILn(String(fileRecordCounter).c_str());
+        sendToUI("ECU State: "); sendToUILn(String(ecuState).c_str());
+        sendToUI("Session State: "); sendToUILn(String(sessionState).c_str());
+        sendToUILn("LOG_STATUS_END");
     }
-  }
-  else if (strcmp(cmd, "logsummary") == 0) {
-    File file = SD.open(sessionLogPath);
-    if (file) {
-      sendToUILn("SESSION_SUMMARY_BEGIN");
-      while (file.available()) {
-        String line = file.readStringUntil('\n');
-        if (line.length() > 0 && !line.startsWith("SessionID")) {
-          sendToUILn(line.c_str());
+    else if (strcmp(cmd, "logrotate") == 0) {
+        rotateFile(ROTATE_REASON_USER_COMMAND);
+        sendToUILn("Log rotated");
+    }
+    else if (strcmp(cmd, "loglist") == 0) {
+        if (param) {
+            int year, month, day;
+            if (sscanf(param, "%d-%d-%d", &year, &month, &day) == 3) {
+                listLogsByDate(year, month, day);
+            } else {
+                sendToUILn("Usage: loglist YYYY-MM-DD");
+            }
+        } else {
+            sendToUILn("Usage: loglist YYYY-MM-DD");
         }
-      }
-      file.close();
-      sendToUILn("SESSION_SUMMARY_END");
     }
-  }
+    else if (strcmp(cmd, "logsummary") == 0) {
+        File file = SD.open(sessionLogPath);
+        if (file) {
+            sendToUILn("SESSION_SUMMARY_BEGIN");
+            while (file.available()) {
+                String line = file.readStringUntil('\n');
+                if (line.length() > 0 && !line.startsWith("SessionID")) {
+                    sendToUILn(line.c_str());
+                }
+            }
+            file.close();
+            sendToUILn("SESSION_SUMMARY_END");
+        }
+    }
 }
 
 void handleDiagCommands(char* cmd, char* param) {
-  if (strcmp(cmd, "listdiag") == 0) {
-    listDiagFiles();
-  }
-  else if (strcmp(cmd, "creatediag") == 0) {
-    createDisconnectDiagFile(ROTATE_REASON_USER_COMMAND, lastRecError, lastTecError);
-    sendToUILn("Manual diagnostic file created");
-  }
+    if (strcmp(cmd, "listdiag") == 0) {
+        listDiagFiles();
+    }
+    else if (strcmp(cmd, "creatediag") == 0) {
+        createDisconnectDiagFile(ROTATE_REASON_USER_COMMAND, lastRecError, lastTecError);
+        sendToUILn("Manual diagnostic file created");
+    }
 }
 
 void sendStatus() {
-  unsigned long now = millis();
-  unsigned long runtime = (now - startTime) / 1000;
-  
-  // Check if time is synchronized
-  time_t now_time = time(nullptr);
-  struct tm *timeinfo = localtime(&now_time);
-  bool timeSynced = (timeinfo->tm_year >= 120);  // year >= 2020
-  
-  sendToUILn("STATUS_BEGIN");
-  delay(5);
-  sendToUI("Uptime: "); sendToUI(String(runtime).c_str()); sendToUILn(" s");
-  sendToUI("Free heap: "); sendToUILn(String(ESP.getFreeHeap()).c_str());
-  sendToUI("SD Card: "); sendToUILn(sdReady ? "Ready" : "Not Found");
-  sendToUI("Time Sync: "); sendToUILn(timeSynced ? "OK" : "Waiting for GPS");
-  sendToUI("Logging: "); sendToUILn(loggingActive ? "Active" : "Stopped");
-  sendToUI("Messages: "); sendToUILn(String(messageCount).c_str());
-  sendToUI("Accepted: "); sendToUILn(String(acceptedCount).c_str());
-  sendToUI("Filtered: "); sendToUILn(String(filteredOutCount).c_str());
-  sendToUI("Logged: "); sendToUILn(String(loggedCount).c_str());
-  sendToUI("ECU State: "); sendToUILn(String(ecuState).c_str());
-  sendToUI("Session ID: "); sendToUILn(String(currentSessionId).c_str());
-  sendToUI("File Sequence: "); sendToUILn(String(currentFileSequence).c_str());
-  sendToUI("Session Records: "); sendToUILn(String(sessionRecordCounter).c_str());
-  sendToUI("File Records: "); sendToUILn(String(fileRecordCounter).c_str());
-  sendToUILn("STATUS_END");
+    unsigned long now = millis();
+    unsigned long runtime = (now - startTime) / 1000;
+
+    time_t now_time = time(nullptr);
+    struct tm *timeinfo = localtime(&now_time);
+    bool timeSynced = (timeinfo->tm_year >= 120);
+
+    sendToUILn("STATUS_BEGIN");
+    delay(5);
+    sendToUI("Uptime: "); sendToUI(String(runtime).c_str()); sendToUILn(" s");
+    sendToUI("Free heap: "); sendToUILn(String(ESP.getFreeHeap()).c_str());
+    sendToUI("SD Card: "); sendToUILn(sdReady ? "Ready" : "Not Found");
+    sendToUI("Time Sync: "); sendToUILn(timeSynced ? "OK" : "Waiting for GPS");
+    sendToUI("Logging: "); sendToUILn(loggingActive ? "Active" : "Stopped");
+    sendToUI("Messages: "); sendToUILn(String(messageCount).c_str());
+    sendToUI("Accepted: "); sendToUILn(String(acceptedCount).c_str());
+    sendToUI("Filtered: "); sendToUILn(String(filteredOutCount).c_str());
+    sendToUI("Logged: "); sendToUILn(String(loggedCount).c_str());
+    sendToUI("ECU State: "); sendToUILn(String(ecuState).c_str());
+    sendToUI("Session ID: "); sendToUILn(String(currentSessionId).c_str());
+    sendToUI("File Sequence: "); sendToUILn(String(currentFileSequence).c_str());
+    sendToUI("Session Records: "); sendToUILn(String(sessionRecordCounter).c_str());
+    sendToUI("File Records: "); sendToUILn(String(fileRecordCounter).c_str());
+    sendToUILn("STATUS_END");
 }
 
 void sendCardInfo() {
-  if (!sdReady) {
-    sendToUILn("ERROR: SD not ready");
-    return;
-  }
-  
-  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  uint64_t totalSize = SD.totalBytes() / (1024 * 1024);
-  uint64_t usedSize = SD.usedBytes() / (1024 * 1024);
-  
-  sendToUILn("SD_CARD_INFO_BEGIN");
-  sendToUI("Card size: "); sendToUI(String(cardSize).c_str()); sendToUILn(" MB");
-  sendToUI("Total: "); sendToUI(String(totalSize).c_str()); sendToUILn(" MB");
-  sendToUI("Used: "); sendToUI(String(usedSize).c_str()); sendToUILn(" MB");
-  sendToUI("Free: "); sendToUI(String(totalSize - usedSize).c_str()); sendToUILn(" MB");
-  sendToUILn("SD_CARD_INFO_END");
+    if (!sdReady) {
+        sendToUILn("ERROR: SD not ready");
+        return;
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    uint64_t totalSize = SD.totalBytes() / (1024 * 1024);
+    uint64_t usedSize = SD.usedBytes() / (1024 * 1024);
+
+    sendToUILn("SD_CARD_INFO_BEGIN");
+    sendToUI("Card size: "); sendToUI(String(cardSize).c_str()); sendToUILn(" MB");
+    sendToUI("Total: "); sendToUI(String(totalSize).c_str()); sendToUILn(" MB");
+    sendToUI("Used: "); sendToUI(String(usedSize).c_str()); sendToUILn(" MB");
+    sendToUI("Free: "); sendToUI(String(totalSize - usedSize).c_str()); sendToUILn(" MB");
+    sendToUILn("SD_CARD_INFO_END");
 }
 
 void sendHelp() {
-  sendToUILn("=== BMS LOGGER COMMANDS ===");
-  delay(5);
-  sendToUILn("list           - List SD files");
-  delay(5);
-  sendToUILn("read [file]    - Read file");
-  delay(5);
-  sendToUILn("delete [file]  - Delete file");
-  delay(5);
-  sendToUILn("create [file]  - Create test file");
-  delay(5);
-  sendToUILn("info           - SD card info");
-  delay(5);
-  sendToUILn("status         - System status");
-  delay(5);
-  sendToUILn("live           - Live data");
-  delay(5);
-  sendToUILn("stats          - Statistics");
-  delay(5);
-  sendToUILn("logstart       - Start logging");
-  delay(5);
-  sendToUILn("logstop        - Stop logging");
-  delay(5);
-  sendToUILn("reset          - Reset stats");
-  delay(5);
-  sendToUILn("logstatus      - Show current log file info");
-  delay(5);
-  sendToUILn("logrotate      - Force rotate current log");
-  delay(5);
-  sendToUILn("loglist YYYY-MM-DD - List logs by date");
-  delay(5);
-  sendToUILn("sessions       - Show session history");  // NEW
-  delay(5);
-  sendToUILn("listdiag       - List all diagnostic files");
-  delay(5);
-  sendToUILn("creatediag     - Create a manual diagnostic file");
-  delay(5);
-  sendToUILn("logsummary     - Show session history");
-  delay(5);
-  sendToUILn("help           - This help");
+    sendToUILn("=== BMS LOGGER COMMANDS ===");
+    delay(5);
+    sendToUILn("list           - List SD files");
+    delay(5);
+    sendToUILn("read [file]    - Read file");
+    delay(5);
+    sendToUILn("delete [file]  - Delete file");
+    delay(5);
+    sendToUILn("create [file]  - Create test file");
+    delay(5);
+    sendToUILn("info           - SD card info");
+    delay(5);
+    sendToUILn("status         - System status");
+    delay(5);
+    sendToUILn("live           - Live data");
+    delay(5);
+    sendToUILn("stats          - Statistics");
+    delay(5);
+    sendToUILn("logstart       - Start logging");
+    delay(5);
+    sendToUILn("logstop        - Stop logging");
+    delay(5);
+    sendToUILn("reset          - Reset stats");
+    delay(5);
+    sendToUILn("logstatus      - Show current log file info");
+    delay(5);
+    sendToUILn("logrotate      - Force rotate current log");
+    delay(5);
+    sendToUILn("loglist YYYY-MM-DD - List logs by date");
+    delay(5);
+    sendToUILn("sessions       - Show session history");
+    delay(5);
+    sendToUILn("listdiag       - List all diagnostic files");
+    delay(5);
+    sendToUILn("creatediag     - Create a manual diagnostic file");
+    delay(5);
+    sendToUILn("logsummary     - Show session history");
+    delay(5);
+    sendToUILn("ui on          - Force UI mode (pause logging/MQTT)");
+    delay(5);
+    sendToUILn("ui off         - Exit UI mode (resume logging/MQTT)");
+    delay(5);
+    sendToUILn("help           - This help");
 }
 
 void sendLiveData() {
-  unsigned long now = millis();
-  
-  sendToUILn("LIVE_DATA_BEGIN");
-  delay(5);
-  
-  if (isValid(battSt1.lastUpdate, battSt1.timeoutMs, now)) {
-    sendToUI("BATT:"); 
-    sendToUI(String(battSt1.voltage, 2).c_str()); sendToUI(",");
-    sendToUI(String(battSt1.current, 2).c_str()); sendToUI(",");
-    sendToUILn(String(battSt1.soc).c_str());
-  }
-  
-  if (isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now)) {
-    sendToUI("CELL_VOLT:");
-    sendToUI(String(cellVolt.maxCellNo).c_str()); sendToUI(",");
-    sendToUI(String(cellVolt.maxCellVolt).c_str()); sendToUI(",");
-    sendToUI(String(cellVolt.minCellNo).c_str()); sendToUI(",");
-    sendToUILn(String(cellVolt.minCellVolt).c_str());
-  }
-  
-  if (isValid(mcuMsg1.lastUpdate, mcuMsg1.timeoutMs, now)) {
-    sendToUI("MCU:");
-    sendToUI(String(mcuMsg1.dcVolt).c_str()); sendToUI(",");
-    sendToUI(String(mcuMsg1.motorTemp).c_str()); sendToUI(",");
-    sendToUI(String(mcuMsg1.cntrlTemp).c_str()); sendToUI(",");
-    sendToUILn(String(mcuMsg1.throttlePercent).c_str());
-  }
-  
-  if (isValid(mcuMsg2.lastUpdate, mcuMsg2.timeoutMs, now)) {
-    sendToUI("SPEED:");
-    sendToUI(String(mcuMsg2.motorSpeed).c_str()); sendToUI(",");
-    sendToUILn(String(mcuMsg2.motorSpdLim).c_str());
-  }
-  
-  sendToUI("ECU_STATE:"); sendToUILn(String(ecuState).c_str());
-  
-  sendToUI("SESSION_INFO:");
-  sendToUI(String(currentSessionId).c_str()); sendToUI(",");
-  sendToUI(String(currentFileSequence).c_str()); sendToUI(",");
-  sendToUI(String(sessionRecordCounter).c_str()); sendToUI(",");
-  sendToUILn(String(fileRecordCounter).c_str());
-  
-  sendToUILn("LIVE_DATA_END");
+    unsigned long now = millis();
+
+    sendToUILn("LIVE_DATA_BEGIN");
+    delay(5);
+
+    if (isValid(battSt1.lastUpdate, battSt1.timeoutMs, now)) {
+        sendToUI("BATT:");
+        sendToUI(String(battSt1.voltage, 2).c_str()); sendToUI(",");
+        sendToUI(String(battSt1.current, 2).c_str()); sendToUI(",");
+        sendToUILn(String(battSt1.soc).c_str());
+    }
+
+    if (isValid(cellVolt.lastUpdate, cellVolt.timeoutMs, now)) {
+        sendToUI("CELL_VOLT:");
+        sendToUI(String(cellVolt.maxCellNo).c_str()); sendToUI(",");
+        sendToUI(String(cellVolt.maxCellVolt).c_str()); sendToUI(",");
+        sendToUI(String(cellVolt.minCellNo).c_str()); sendToUI(",");
+        sendToUILn(String(cellVolt.minCellVolt).c_str());
+    }
+
+    if (isValid(mcuMsg1.lastUpdate, mcuMsg1.timeoutMs, now)) {
+        sendToUI("MCU:");
+        sendToUI(String(mcuMsg1.dcVolt).c_str()); sendToUI(",");
+        sendToUI(String(mcuMsg1.motorTemp).c_str()); sendToUI(",");
+        sendToUI(String(mcuMsg1.cntrlTemp).c_str()); sendToUI(",");
+        sendToUILn(String(mcuMsg1.throttlePercent).c_str());
+    }
+
+    if (isValid(mcuMsg2.lastUpdate, mcuMsg2.timeoutMs, now)) {
+        sendToUI("SPEED:");
+        sendToUI(String(mcuMsg2.motorSpeed).c_str()); sendToUI(",");
+        sendToUILn(String(mcuMsg2.motorSpdLim).c_str());
+    }
+
+    sendToUI("ECU_STATE:"); sendToUILn(String(ecuState).c_str());
+
+    sendToUI("SESSION_INFO:");
+    sendToUI(String(currentSessionId).c_str()); sendToUI(",");
+    sendToUI(String(currentFileSequence).c_str()); sendToUI(",");
+    sendToUI(String(sessionRecordCounter).c_str()); sendToUI(",");
+    sendToUILn(String(fileRecordCounter).c_str());
+
+    sendToUILn("LIVE_DATA_END");
 }
 
 void sendStats() {
-  unsigned long runtime = (millis() - startTime) / 1000;
-  
-  Serial2.println("STATS_BEGIN");
-  delay(5);
-  Serial2.print("Runtime:"); Serial2.println(runtime);
-  Serial2.print("Messages:"); Serial2.println(messageCount);
-  Serial2.print("Accepted:"); Serial2.println(acceptedCount);
-  Serial2.print("Filtered:"); Serial2.println(filteredOutCount);
-  Serial2.print("Logged:"); Serial2.println(loggedCount);
-  Serial2.print("SD_Ready:"); Serial2.println(sdReady ? "1" : "0");
-  Serial2.print("Logging:"); Serial2.println(loggingActive ? "1" : "0");
-  Serial2.print("ECU_State:"); Serial2.println(ecuState);
-  Serial2.print("SessionID:"); Serial2.println(currentSessionId);
-  Serial2.print("FileSeq:"); Serial2.println(currentFileSequence);
-  Serial2.print("SessionRec:"); Serial2.println(sessionRecordCounter);
-  Serial2.print("FileRec:"); Serial2.println(fileRecordCounter);
-  
-  if (sdReady) {
-    File root = SD.open("/");
-    if (root) {
-      int fileCount = 0;
-      File file = root.openNextFile();
-      while (file) {
-        if (!file.isDirectory()) fileCount++;
-        file.close();
-        file = root.openNextFile();
-      }
-      root.close();
-      Serial2.print("Files:"); Serial2.println(fileCount);
+    unsigned long runtime = (millis() - startTime) / 1000;
+
+    sendToUILn("STATS_BEGIN");
+    delay(5);
+    sendToUI("Runtime:"); sendToUILn(String(runtime).c_str());
+    sendToUI("Messages:"); sendToUILn(String(messageCount).c_str());
+    sendToUI("Accepted:"); sendToUILn(String(acceptedCount).c_str());
+    sendToUI("Filtered:"); sendToUILn(String(filteredOutCount).c_str());
+    sendToUI("Logged:"); sendToUILn(String(loggedCount).c_str());
+    sendToUI("SD_Ready:"); sendToUILn(sdReady ? "1" : "0");
+    sendToUI("Logging:"); sendToUILn(loggingActive ? "1" : "0");
+    sendToUI("ECU_State:"); sendToUILn(String(ecuState).c_str());
+    sendToUI("SessionID:"); sendToUILn(String(currentSessionId).c_str());
+    sendToUI("FileSeq:"); sendToUILn(String(currentFileSequence).c_str());
+    sendToUI("SessionRec:"); sendToUILn(String(sessionRecordCounter).c_str());
+    sendToUI("FileRec:"); sendToUILn(String(fileRecordCounter).c_str());
+
+    if (sdReady) {
+        File root = SD.open("/");
+        if (root) {
+            int fileCount = 0;
+            File file = root.openNextFile();
+            while (file) {
+                if (!file.isDirectory()) fileCount++;
+                file.close();
+                file = root.openNextFile();
+            }
+            root.close();
+            sendToUI("Files:"); sendToUILn(String(fileCount).c_str());
+        }
     }
-  }
-  
-  Serial2.println("STATS_END");
+
+    sendToUILn("STATS_END");
 }
 
 void sendGPSInfo() {
     sendToUILn("GPS_INFO_BEGIN");
     sendToUI("Initialized: "); sendToUILn(gpsInitialized ? "Yes" : "No");
-    sendToUI("Location: "); 
+    sendToUI("Location: ");
     if (gpsData.location_valid) {
         char locStr[64];
         snprintf(locStr, sizeof(locStr), "%.6f, %.6f", gpsData.latitude, gpsData.longitude);
@@ -781,7 +827,7 @@ void sendGPSInfo() {
     sendToUI("Time (UTC): ");
     if (gpsData.time_valid) {
         char timeStr[20];
-        snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", 
+        snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d",
                  gpsData.hour_utc, gpsData.minute_utc, gpsData.second_utc);
         sendToUILn(timeStr);
     } else {
@@ -811,17 +857,13 @@ void sendGPSInfo() {
 }
 
 void applyConfigurationChanges() {
-
     if (gpsInitialized) {
         Serial.printf("GPS baud rate changed to %d - will apply on next GPS restart\n", gpsBaudRate);
     }
-    
     Serial.printf("Buffer size changed to %d - will apply on next restart\n", bufferSize);
-    
     if (wifiSSID.length() > 0 && wifiPassword.length() > 0) {
         Serial.printf("WiFi settings changed - would need to reconnect\n");
     }
-       
     sendToUILn("CONFIG_APPLIED");
 }
 
@@ -830,28 +872,27 @@ void sendSessionHistory() {
         sendToUILn("ERROR: SD not ready");
         return;
     }
-    
+
     if (!SD.exists(sessionLogPath)) {
         sendToUILn("SESSION_HISTORY_BEGIN");
         sendToUILn("NO_SESSIONS");
         sendToUILn("SESSION_HISTORY_END");
         return;
     }
-    
+
     File file = SD.open(sessionLogPath, FILE_READ);
     if (!file) {
         sendToUILn("ERROR: Cannot open session log");
         return;
     }
-    
+
     sendToUILn("SESSION_HISTORY_BEGIN");
-    
+
     bool firstLine = true;
     while (file.available()) {
         String line = file.readStringUntil('\n');
         line.trim();
         if (line.length() > 0) {
-        
             if (firstLine && line.startsWith("SessionID")) {
                 firstLine = false;
                 continue;
@@ -860,7 +901,7 @@ void sendSessionHistory() {
             sendToUILn(line.c_str());
         }
     }
-    
+
     file.close();
     sendToUILn("SESSION_HISTORY_END");
 }
